@@ -1,0 +1,12 @@
+import type {Organization} from "./session";
+export type Card={product_id:string;variant_id:string;name:string;sku:string;variant_name:string;price_amount:number;currency_code:string;available:number|null;manual_updated_at:string|null;fresh:boolean;attributes:Record<string,string>};
+export type ChatMessage={id:string;role:"customer"|"assistant"|"staff"|"system"|"tool";content:string;data:{cards?:Card[];mode?:string;order_id?:string;attachments?:{type:string}[];reply_to?:string};created_at:string};
+export type Conversation={id:string;updated_at?:string;channel:"internal_chat"|"telegram"|"whatsapp"|"instagram";channel_window_until?:string|null;channel_delivery?:{id:string;status:string;provider_id?:string}[];customer_id:string;control_mode:"agent"|"human";status:"open"|"closed";version:number;mode:"mock"|"live";model:string;messages:ChatMessage[];expires_at:string};
+export type Quote={id:string;conversation_id:string;items:{variant_id:string;name:string;sku:string;quantity:number;unit_price_amount:number;fresh:boolean;manual_updated_at:string|null}[];expires_at:string;total_amount:number;reserved:false};
+export type Order={id:string;source:"internal_chat"|"telegram"|"whatsapp"|"instagram";conversation_id:string;customer_id:string;status:string;is_test:boolean;version:number;total_amount:number|null;request_kind?:string;request_details?:{summary?:string};created_at:string;confirmed_at:string|null;confirmed_by:string|null;items:{id:string;name_snapshot:string;sku_snapshot:string;variant_id:string;quantity:number;unit_price_amount:number}[];events:{id:string;kind:string;reason:string;actor_id:string|null;created_at:string}[]};
+export type WorkflowProps={org:Organization;organizations:Organization[];view:"chat"|"orders"|"order";conversations?:Conversation[];conversation?:Conversation;orders?:Order[];order?:Order;mode?:string;error?:string};
+export const statuses:Record<string,string>={pending_confirmation:"Ожидает сотрудника",confirmed:"Подтверждена · резерв выполнен",rejected:"Отклонена",cancelled:"Отменена",completed:"Выполнена"};
+
+// getRandomValues also works in the isolated HTTP browser-test network.
+// Keys remain cryptographically random; no Math.random or localStorage.
+export function idempotencyKey(){const bytes=crypto.getRandomValues(new Uint8Array(16));bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;const hex=Array.from(bytes,b=>b.toString(16).padStart(2,"0")).join("");return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;}

@@ -1,0 +1,14 @@
+# Optional HUMAN demo access. Only merge into the prepared offline test stack.
+# Dedicated project/aba_test; never merge into the working application stack.
+# Internal-only networks do not publish host ports on the verified engine.
+# Run demo-localhost.py on the host; it binds only 127.0.0.1 via Docker stdio.
+services:
+  web:
+    environment:
+      ABA_LOCAL_DEMO_EMAIL_NOTICE: '1'
+  api:
+    environment:
+      PUBLIC_ORIGIN: http://127.0.0.1:${ABA_DEMO_PORT:-43010}
+  worker:
+    environment:
+      PUBLIC_ORIGIN: http://127.0.0.1:${ABA_DEMO_PORT:-43010}

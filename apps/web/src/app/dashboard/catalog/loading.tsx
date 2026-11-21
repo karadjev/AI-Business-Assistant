@@ -1,0 +1,1 @@
+export default function Loading(){return <main id="main" tabIndex={-1} aria-busy="true" aria-label="Загрузка каталога"><h1>Центр управления каталогом</h1><div className="cc-metrics">{[1,2,3,4].map(x=><div key={x} className="cc-skeleton"/>)}</div><p role="status">Получаем состояние каталога…</p></main>}

@@ -1,0 +1,129 @@
+name: CI
+on:
+  # Networked CI needs a separate owner-approved execution.
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  go:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-go@v5.5.0
+        with:
+          go-version: '1.26.11'
+          cache-dependency-path: apps/api/go.sum
+      - name: Format
+        run: test -z "$(gofmt -l .)"
+      - run: go vet ./...
+      - run: go test -race -count=1 ./...
+      - run: go build ./cmd/api ./cmd/worker ./cmd/migrate ./cmd/healthcheck
+      - name: Compose validation (no secrets in output)
+        working-directory: .
+        run: cp .env.example .env && docker compose config --quiet
+  web:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-node@v4.4.0
+        with:
+          node-version: '24.15.0'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci --no-fund --no-audit
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run check:openapi
+      - name: Build prerequisites and dashboard rendering regressions
+        run: npm run test:build-preflight && node --test tests/dashboard-render.test.mjs
+      - name: Dependency advisory gate (includes development dependencies)
+        run: npm audit --audit-level=high
+      - run: npm run build
+      - name: Artifact admission regressions
+        working-directory: .
+        run: node --test scripts/build-env/artifacts.test.cjs
+  release-controls:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - name: Release, backup, local endpoint and runtime-control regressions
+        run: python3 -m unittest discover -s scripts/deployment -p 'test_*.py'
+      - name: Disposable database rehearsal safety boundaries
+        run: python3 -m unittest discover -s scripts/readiness -p 'test_*.py'
+  integration-and-smoke:
+    runs-on: ubuntu-24.04
+    services:
+      mailpit:
+        image: axllent/mailpit:v1.21
+        ports:
+          - 1025:1025
+          - 8025:8025
+      postgres:
+        image: postgres:18.3-alpine3.23
+        env:
+          POSTGRES_DB: aba_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: local_test_admin
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d aba_test"
+          --health-interval 2s --health-timeout 2s --health-retries 30
+    env:
+      ABA_TEST_DATABASE_URL: postgresql://aba_app:local_test_app@127.0.0.1:5432/aba_test?sslmode=disable
+      ABA_TEST_MIGRATION_DATABASE_URL: postgresql://aba_migrator:local_test_migrator@127.0.0.1:5432/aba_test?sslmode=disable
+      DATABASE_URL: postgresql://aba_app:local_test_app@127.0.0.1:5432/aba_test?sslmode=disable
+      TELEGRAM_TRANSPORT: mock
+      LLM_PROVIDER: mock
+      LLM_ENABLE_LIVE: 'false'
+      LLM_EXTERNAL_REQUESTS_AUTHORIZED: 'false'
+      LLM_KILL_SWITCH: 'true'
+      LLM_PLATFORM_BUDGET_MICRORUB: '0'
+      TELEGRAM_EXTERNAL_REQUESTS_AUTHORIZED: 'false'
+      TELEGRAM_SENDING_ENABLED: 'false'
+      TELEGRAM_SENDING_KILL_SWITCH: 'true'
+      SMOKE_REQUIRE_READY: '1'
+      AUTH_EMAIL_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      TEST_MAILPIT_URL: http://127.0.0.1:8025
+      TEST_SMTP_ADDR: 127.0.0.1:1025
+      SMTP_ADDR: 127.0.0.1:1025
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-go@v5.5.0
+        with:
+          go-version: '1.26.11'
+          cache-dependency-path: apps/api/go.sum
+      - uses: actions/setup-node@v4.4.0
+        with:
+          node-version: '24.15.0'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Bootstrap isolated database roles
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGPASSWORD: local_test_admin
+          POSTGRES_USER: postgres
+          POSTGRES_DB: aba_test
+          APP_DB_PASSWORD: local_test_app
+          MIGRATOR_DB_PASSWORD: local_test_migrator
+        run: sh infrastructure/postgres/init.sh
+      - name: Database and migrations
+        working-directory: apps/api
+        run: go test -race -tags=integration -count=1 -v ./tests/integration
+      - working-directory: apps/web
+        run: npm ci --no-fund --no-audit
+      - working-directory: apps/web
+        run: npm run build
+      - working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+      - run: sh scripts/smoke.sh

@@ -1,0 +1,15 @@
+> Актуализация9В: VerifyTemplate использует общий provisioning; wa_template_check требует digest/source/expiry/revocation. Synthetic не является Meta approval. См. TRUSTED_TEMPLATE_STATUS.md.
+
+# Approved template registry — 9Б
+
+Tenant-scoped wa_templates: org/integration/WABA, name, language, category, status, components, parameter_schema, optional provider_id, verified_at/until, source, policy_version, synthetic. Уникальность org+integration+name+language и composite FK. Статусы DRAFT/PENDING/APPROVED/REJECTED/PAUSED/DISABLED/UNKNOWN. Наличие APPROVED в строке не доказывает разрешение real send.
+
+`TemplateVerifier` — доверенный backend boundary, не HTTP request schema. Реализован MockTemplateVerifier; VerifyTemplate принимает только offline verifier и worker proof, SQL принудительно записывает SYNTHETIC_MOCK/ synthetic=true. Вызов владельца без server proof не может изменить approval; обычного write API нет. Дубликат verification обновляет тот же registry key и пишет audit с template_id/результатом. Ни одного реального Meta approval этим этапом не создано. Live verifier остаётся выключенным до отдельного разрешения/официальной проверки.
+
+MVP поддерживает только один BODY text component и позиционные text parameters (до20,1–1024 символов). Placeholders должны точно соответствовать schema1..N без пропусков/дубликатов/лишних фигурных скобок, body1–4096; name1–512 lowercase/digits/underscore, language bounded. Header/media/currency/date parameters не реализованы и блокируются, не деградируют в text. Postgres regex repetition count512 не используется: проверяются regexp алфавита + отдельный length bound, что протестировано на512.
+
+`wa_template_check` непосредственно в reservation проверяет tenant/integration/WABA/name/language/APPROVED/freshness/source/realm/components/schema/тип/количество и точные queued parameters. Pricing/finance — следующий обязательный gate. Verify/Control/worker используют один integration lock, поэтому backend revocation не пересекает выполняемый dispatch. Нельзя использовать кэш approval из UI или результат давней проверки при enqueue.
+
+Очередь **существующая channel_outbox**, typed payload template_id/parameters. QueueTemplate — internal owner-authorized test-org метод; публичной кнопки отправки шаблона нет. Owner API/UI реестра readonly. Enqueue идемпотентен по outbox UUID и payload; изменённый payload с тем же ключом конфликтует. Template job может быть claimed вне free-text window, но это **не разрешение отправки**: затем обязательны current approval, tariff, money и fenced lease. Worker delay/revocation/expired approval дают отказ. Отдельный TemplateSender не позволяет превратить approved template в свободный текст.
+
+UI /dashboard/integrations/whatsapp показывает budget0, live disabled, имена/язык/категорию/состояние/время/причину недоступности и явную отметку SYNTHETIC. API GET …/templates owner-only, без components с потенциальными ПД/credentials; никакого POST approve. Browser попытка POST через BFF получает404, а PENDING остаётся PENDING. Mock statuses не означают реальное подтверждение Meta.

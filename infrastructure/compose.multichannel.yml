@@ -1,0 +1,116 @@
+# Strict offline audit. No build, pull, external network, host ports or dev volumes.
+name: aba-audit8b2
+x-go: &go
+  image: golang:1.26.2-alpine3.23
+  pull_policy: never
+  working_dir: /src
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  dns: [127.0.0.1]
+  volumes:
+    - ../apps/api:/src:ro
+    - ${ABA_OFFLINE_GOMODCACHE:?Set local cached module directory}:/go/pkg/mod:ro
+    - ../.local/audit8b2/go-cache:/cache
+    - ../.local/audit8b2/artifacts:/artifacts
+  environment: &goenv
+    HTTP_PROXY: ''
+    HTTPS_PROXY: ''
+    ALL_PROXY: ''
+    http_proxy: ''
+    https_proxy: ''
+    all_proxy: ''
+    GOPROXY: 'off'
+    GOSUMDB: 'off'
+    GOTOOLCHAIN: local
+    GOTELEMETRY: 'off'
+    GOVCS: '*:off'
+    CGO_ENABLED: '0'
+    GOCACHE: /cache
+    GOMODCACHE: /go/pkg/mod
+  networks: [audit]
+services:
+  postgres:
+    image: postgres:18.3-alpine3.23
+    pull_policy: never
+    environment:
+      HTTP_PROXY: ''
+      HTTPS_PROXY: ''
+      ALL_PROXY: ''
+      http_proxy: ''
+      https_proxy: ''
+      all_proxy: ''
+      POSTGRES_DB: aba_test
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: synthetic_audit_admin
+      APP_DB_PASSWORD: synthetic_audit_app
+      MIGRATOR_DB_PASSWORD: synthetic_audit_migrator
+    tmpfs: [/var/lib/postgresql]
+    volumes:
+      - ./postgres/init.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
+    dns: [127.0.0.1]
+    networks: [audit]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U postgres -d aba_test']
+      interval: 1s
+      timeout: 2s
+      retries: 30
+  mailpit:
+    image: axllent/mailpit:v1.21
+    pull_policy: never
+    environment:
+      HTTP_PROXY: ''
+      HTTPS_PROXY: ''
+      ALL_PROXY: ''
+      http_proxy: ''
+      https_proxy: ''
+      all_proxy: ''
+      MP_DISABLE_VERSION_CHECK: 'true'
+    dns: [127.0.0.1]
+    networks: [audit]
+  go:
+    <<: *go
+    command: [sh, -ec, "test -z \"$$(awk '$$2 == \"00000000\" {print}' /proc/net/route)\"; test ! -S /var/run/docker.sock; go test -count=1 ./...; go vet ./...; test -z \"$$(gofmt -l cmd internal tests)\"; for part in api worker migrate healthcheck; do go build -o /artifacts/$$part ./cmd/$$part; done"]
+  race:
+    <<: *go
+    environment:
+      <<: *goenv
+      CGO_ENABLED: '1'
+    command: [go, test, -race, -count=1, ./...]
+  integration:
+    <<: *go
+    environment:
+      <<: *goenv
+      ABA_AUDIT_EVIDENCE_DIR: /artifacts
+      ABA_TEST_DATABASE_URL: postgresql://aba_app:synthetic_audit_app@postgres:5432/aba_test?sslmode=disable
+      ABA_TEST_MIGRATION_DATABASE_URL: postgresql://aba_migrator:synthetic_audit_migrator@postgres:5432/aba_test?sslmode=disable
+      TEST_MAILPIT_URL: http://mailpit:8025
+    depends_on:
+      postgres: {condition: service_healthy}
+      mailpit: {condition: service_started}
+    command: [sh, -ec, "test -z \"$$(awk '$$2 == \"00000000\" {print}' /proc/net/route)\"; set -o pipefail; go test -tags=integration -count=1 -v ./tests/integration 2>&1 | tee /artifacts/integration.log"]
+  web-check:
+    image: mcr.microsoft.com/playwright:v1.64.0-noble
+    pull_policy: never
+    working_dir: /apps/web
+    cap_drop: [ALL]
+    dns: [127.0.0.1]
+    networks: [audit]
+    environment:
+      HTTP_PROXY: ''
+      HTTPS_PROXY: ''
+      ALL_PROXY: ''
+      http_proxy: ''
+      https_proxy: ''
+      all_proxy: ''
+      NEXT_TELEMETRY_DISABLED: '1'
+      npm_config_offline: 'true'
+      npm_config_audit: 'false'
+      npm_config_fund: 'false'
+    volumes:
+      - ../apps/web:/apps/web:ro
+      - ../scripts:/scripts:ro
+      - ../packages:/packages:ro
+    command: [sh, -ec, "test -z \"$$(awk '$$2 == \"00000000\" {print}' /proc/net/route)\"; node node_modules/eslint/bin/eslint.js .; node node_modules/typescript/bin/tsc --noEmit --incremental false; node /scripts/check-openapi.mjs"]
+networks:
+  audit:
+    internal: true

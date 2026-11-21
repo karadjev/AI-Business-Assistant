@@ -1,0 +1,69 @@
+# Overlay ONLY after preparation has been approved and dependencies supplied.
+# Use with compose.environment.yml and compose.environment-smoke.yml.
+services:
+  race:
+    image: aba-go-race:go1.26.2-alpine3.23-local
+    pull_policy: never
+  integration:
+    image: aba-go-race:go1.26.2-alpine3.23-local
+    pull_policy: never
+    environment:
+      CGO_ENABLED: '1'
+    command: [sh, -ec, "set -o pipefail; go test -race -tags=integration -count=1 -v ./tests/integration 2>&1 | tee /artifacts/integration-race.log"]
+  web-build:
+    image: mcr.microsoft.com/playwright:v1.64.0-noble
+    pull_policy: never
+    working_dir: /apps/web
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    dns: [127.0.0.1]
+    networks: [audit]
+    environment:
+      ABA_WEB_ROOT: /apps/web
+      ABA_WEB_SOURCE: /web-source
+      ABA_BUILD_EVIDENCE_DIR: /build-evidence
+      ABA_BUILD_SOURCE_COMMIT: ${ABA_BUILD_SOURCE_COMMIT:-}
+      NEXT_TELEMETRY_DISABLED: '1'
+      npm_config_offline: 'true'
+      npm_config_audit: 'false'
+      npm_config_fund: 'false'
+      HTTP_PROXY: ''
+      HTTPS_PROXY: ''
+      ALL_PROXY: ''
+    volumes:
+      - ../apps/web:/web-source:ro
+      - ../scripts:/scripts:ro
+      - ../.local/build-env/web-verified:/apps/web
+      - ../.local/build-env/provenance:/build-evidence
+    command: [sh, /scripts/build-env/production.sh]
+  web:
+    image: mcr.microsoft.com/playwright:v1.64.0-noble
+    pull_policy: never
+    entrypoint: [sh, -ec]
+    command: ['node /scripts/build-env/artifacts.cjs verify; exec node .next/standalone/server.js']
+    working_dir: /apps/web
+    volumes:
+      - ../.local/build-env/web-verified:/apps/web:ro
+      - ../apps/web:/web-source:ro
+      - ../scripts:/scripts:ro
+    environment:
+      ABA_WEB_ROOT: /apps/web
+      ABA_WEB_SOURCE: /web-source
+      API_BASE_URL: http://api:8080
+      HOSTNAME: 0.0.0.0
+      PORT: '3000'
+      NEXT_TELEMETRY_DISABLED: '1'
+  browser:
+    entrypoint: [sh, /scripts/build-env/browser.sh]
+    command: [--output=/results/current-production, --reporter=json]
+    environment:
+      ABA_WEB_ROOT: /apps/web
+      ABA_WEB_SOURCE: /web-source
+      ABA_BROWSER_FIXTURE_BIN: /artifacts/browserfixture
+      ABA_BROWSER_ADMIN_DATABASE_URL: postgresql://postgres:synthetic_audit_admin@postgres:5432/aba_test?sslmode=disable
+    volumes:
+      - ../.local/build-env/web-verified:/apps/web:ro
+      - ../apps/web:/web-source:ro
+      - ../scripts:/scripts:ro
+      - ../.local/audit8d/browser-results:/results
+      - ../.local/audit8d/artifacts:/artifacts:ro

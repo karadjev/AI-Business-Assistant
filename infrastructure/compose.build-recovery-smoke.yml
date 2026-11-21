@@ -1,0 +1,104 @@
+# Merge with compose.build-recovery.yml. Uses cached stage-7 runtime images, current Go binaries.
+x-runtime: &runtime
+  APP_ENV: development
+  DATABASE_URL: postgresql://aba_app:synthetic_audit_app@postgres:5432/aba_test?sslmode=disable
+  AUTH_EMAIL_KEY: '1111111111111111111111111111111111111111111111111111111111111111'
+  TELEGRAM_ENCRYPTION_KEY: '2222222222222222222222222222222222222222222222222222222222222222'
+  PUBLIC_ORIGIN: http://web:3000
+  SMTP_ADDR: mailpit:1025
+  LLM_PROVIDER: mock
+  LLM_ENABLE_LIVE: 'false'
+  LLM_EXTERNAL_REQUESTS_AUTHORIZED: 'false'
+  LLM_KILL_SWITCH: 'true'
+  LLM_PLATFORM_BUDGET_MICRORUB: '0'
+  WHATSAPP_ENCRYPTION_KEY: '5555555555555555555555555555555555555555555555555555555555555555'
+  WHATSAPP_LIVE_ENABLED: 'false'
+  WHATSAPP_EXTERNAL_REQUESTS_AUTHORIZED: 'false'
+  WHATSAPP_MONETARY_BUDGET_RUB: '0'
+  TELEGRAM_TRANSPORT: mock
+  TELEGRAM_EXTERNAL_REQUESTS_AUTHORIZED: 'false'
+  TELEGRAM_SENDING_ENABLED: 'false'
+  TELEGRAM_SENDING_KILL_SWITCH: 'true'
+  HTTP_PROXY: ''
+  HTTPS_PROXY: ''
+  ALL_PROXY: ''
+  http_proxy: ''
+  https_proxy: ''
+  all_proxy: ''
+x-service: &runtime-service
+  pull_policy: never
+  networks: [audit]
+  dns: [127.0.0.1]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  volumes: [../.local/audit8g/artifacts:/artifacts:ro]
+  environment: *runtime
+  stop_grace_period: 15s
+services:
+  postgres:
+    tmpfs: !reset []
+    volumes:
+      - audit_smoke_data:/var/lib/postgresql
+  migrate:
+    <<: *runtime-service
+    image: aba-stage7-smoke-migrate:latest
+    entrypoint: [/artifacts/migrate]
+    command: [up]
+    environment:
+      <<: *runtime
+      MIGRATION_DATABASE_URL: postgresql://aba_migrator:synthetic_audit_migrator@postgres:5432/aba_test?sslmode=disable
+    depends_on:
+      postgres: {condition: service_healthy}
+  api:
+    <<: *runtime-service
+    image: aba-stage7-smoke-api:latest
+    entrypoint: [/artifacts/api]
+    healthcheck:
+      test: [CMD, /artifacts/healthcheck]
+      interval: 2s
+      timeout: 3s
+      retries: 25
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      mailpit: {condition: service_started}
+  worker:
+    <<: *runtime-service
+    image: aba-stage7-smoke-worker:latest
+    entrypoint: [/artifacts/worker]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      mailpit: {condition: service_started}
+  web:
+    <<: *runtime-service
+    image: aba-stage7-smoke-web:latest
+    volumes: []
+    environment:
+      <<: *runtime
+      API_BASE_URL: http://api:8080
+      NEXT_TELEMETRY_DISABLED: '1'
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, node, -e, 'fetch("http://127.0.0.1:3000/").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))']
+      interval: 2s
+      timeout: 3s
+      retries: 25
+  browser:
+    <<: *runtime-service
+    image: mcr.microsoft.com/playwright:v1.64.0-noble
+    working_dir: /apps/web
+    volumes:
+      - ../apps/web:/apps/web:ro
+      - ../.local/audit8g/browser-results:/results
+    environment:
+      <<: *runtime
+      NEXT_TELEMETRY_DISABLED: '1'
+      npm_config_offline: 'true'
+      SMOKE_WEB_URL: http://web:3000
+      SMOKE_API_URL: http://api:8080
+      SMOKE_REQUIRE_READY: '1'
+      TEST_MAILPIT_URL: http://mailpit:8025
+    command: [node, node_modules/@playwright/test/cli.js, test, --output=/results, --reporter=list]
+
+volumes:
+  audit_smoke_data:

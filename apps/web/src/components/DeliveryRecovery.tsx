@@ -1,0 +1,16 @@
+"use client";
+import {useRef,useState} from "react";
+type Delivery={id:string;status:string;version:number;attempts:number;events:{id:number;new_status:string;attempt:number;decision:string|null}[]};
+function csrf(){return document.cookie.split(";").map(s=>s.trim()).find(s=>s.startsWith("aba_csrf="))?.slice(9)??"";}
+export function DeliveryRecovery({organizationId}:{organizationId:string}){
+ const [items,setItems]=useState<Delivery[]>([]);const [loaded,setLoaded]=useState(false);const [busy,setBusy]=useState(false);const [error,setError]=useState("");const [notice,setNotice]=useState("");
+ const pendingKeys=useRef<Record<string,string>>({});
+ const base=`/api/v1/organizations/${organizationId}/integrations/telegram/deliveries`;
+ async function load(){setBusy(true);setError("");try{const r=await fetch(base,{cache:"no-store"});const data=await r.json();if(!r.ok)throw Error(data.error?.message??`Ошибка ${r.status}`);setItems(data.items);setLoaded(true)}catch(e){setError(e instanceof Error?e.message:"Сервис недоступен")}finally{setBusy(false)}}
+ async function resolve(item:Delivery,decision:"delivered"|"abandon"){
+  const question=decision==="delivered"?"Вы независимо проверили доставку? Это только локальная отметка, не проверка Telegram.":"Отказаться от дальнейшей доставки этого сообщения? Оно могло уже дойти. Повтора не будет.";
+  if(!confirm(question))return;
+  setBusy(true);setError("");setNotice("");const identity=`${item.id}:${item.version}:${decision}`;const key=pendingKeys.current[identity]??(pendingKeys.current[identity]=crypto.randomUUID());try{const r=await fetch(`${base}/${item.id}/resolve`,{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-Token":csrf()},body:JSON.stringify({decision,expected_version:item.version,idempotency_key:key,confirm_resolution:true})});const data=await r.json();if(!r.ok)throw Error(data.error?.message??`Ошибка ${r.status}`);setNotice("Решение записано. Повторной отправки не выполнялось.");await load()}catch(e){setError(e instanceof Error?e.message:"Сервис недоступен")}finally{setBusy(false)}
+ }
+ return <section className="panel" aria-label="Восстановление доставки"><h2>DELIVERY UNKNOWN · восстановление</h2><p>При потере подтверждения сообщение могло быть доставлено. Автоматического повтора нет. Решение сотрудника журналируется; exactly-once не гарантируется.</p><button disabled={busy} onClick={()=>void load()}>{busy?"Загрузка…":"Проверить неопределённые доставки"}</button>{loaded&&items.length===0&&<p>Неопределённых или ошибочных доставок нет.</p>}{error&&<p role="alert">{error}</p>}{notice&&<p role="status">{notice}</p>}{items.map(item=><article key={item.id}><h3>{item.status==="uncertain"?"DELIVERY UNKNOWN":item.status}</h3><p>ID: {item.id} · попытки: {item.attempts} · версия: {item.version}</p>{item.status==="uncertain"&&<><button disabled={busy} onClick={()=>void resolve(item,"delivered")}>Доставка проверена сотрудником</button><button disabled={busy} onClick={()=>void resolve(item,"abandon")}>Отказаться от дальнейшей доставки</button></>}<ul>{item.events.map(event=><li key={event.id}>Попытка {event.attempt}: {event.new_status}{event.decision?` · ${event.decision}`:""}</li>)}</ul></article>)}</section>
+}

@@ -1,0 +1,14 @@
+# No credentials here. Copy outside the checkout and protect with mode0600.
+# Paths are absolute. Secret files need the documented UID/GID and permissions.
+ABA_RELEASE=UNBUILT
+ABA_API_IMAGE=aba-private-api:UNBUILT
+ABA_WEB_IMAGE=aba-private-web:UNBUILT
+ABA_POSTGRES_IMAGE=postgres:18.3-alpine3.23
+ABA_PROXY_IMAGE=nginx:1.27.3-alpine
+ABA_MAILPIT_IMAGE=axllent/mailpit:v1.21
+ABA_SECRETS_DIR=/srv/aba-private/secrets
+ABA_PUBLIC_ORIGIN=https://staging.invalid:8443
+# Select a non-overlapping private subnet for this project; never reuse another environment's network.
+ABA_PRIVATE_SUBNET=10.254.250.0/28
+# Exact cached tags above are QA candidates, NOT an advisory/security approval.
+# Before VPS GO pin reviewed linux/amd64 images to image digests in a new release.

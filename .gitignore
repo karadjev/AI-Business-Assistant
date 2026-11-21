@@ -1,0 +1,57 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.srl
+*.p12
+*.pfx
+*.jks
+*.ppk
+.ssh/
+id_rsa
+id_ed25519
+id_ecdsa
+.pgpass
+.pg_service.conf
+credentials.json
+# Dependencies and builds
+node_modules/
+.next/
+out/
+dist/
+coverage/
+.gocache/
+.gomodcache/
+*.test
+__pycache__/
+*.py[cod]
+# Local runtime data
+.local/
+backups/
+pgdata/
+postgres-data/
+docker-volumes/
+*.log
+*.dump
+*.pgdump
+*.sql.gz
+*.zip
+*.tar
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
+*.tgz
+*.7z
+*.rar
+# OS/editor
+.DS_Store
+.idea/
+
+# Tests and local tooling
+*.tsbuildinfo
+playwright-report/
+test-results/
+apps/api/bin/

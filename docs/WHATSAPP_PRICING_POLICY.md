@@ -1,0 +1,15 @@
+> Актуализация9В: перед admission требуется целостное, неотозванное provider provenance; overlapping policies запрещены. MANUAL_UNVERIFIED/VERIFIED_OPERATOR не Meta. OFFICIAL_PROVIDER import пока закрыт; все реальные тарифы отсутствуют. См. TRUSTED_PRICING_POLICY.md.
+
+# WhatsApp pricing policy — 9Б
+
+**Ни один реальный тариф не выбран/не подтверждён. Реальные Meta API и тарифные страницы не запрашивались.** Бюджеты LLM/WhatsApp0 RUB, live disabled.
+
+wa_pricing содержит org/integration, policy_version, effective_at, verified_at/until, source, verified, synthetic, region, category, message_type, billing_basis, currency, max_charge, verified_free. Категории SERVICE/UTILITY/AUTHENTICATION/MARKETING; message_type text/template. Billing basis per_message/per_conversation/per_event/verified_maximum допускается только как часть verified policy, unknown отвергается. Модель не обещает, что Meta всегда тарифицирует сообщения или диалоги: max_charge — подтверждённый консервативный верхний предел **одной исходящей операции**. Per-conversation policy может резервировать избыточно; это безопаснее недооценки.
+
+В MVP только RUB/microRUB, без FX. Другие валюты, неизвестный region, NULL cost, непризнанная basis, future effective/verification, expired verification, unverified или неправильный realm/source блокируют допуск. Region задаётся доверенным backend в channel_principals.recipient_region и изначальноNULL; wa_id не считается достаточным основанием автоматически назначить страну. JSON/LLM/client не передают регион для авторизации. Совпадения с verified региональной policy недостаточно без остальных gates.
+
+Synthetic policies source=SYNTHETIC_FIXTURE, synthetic=true, версияSYNTHETIC-*, регионZZ, суммы тестовых units. Они существуют только в integration fixtures. Runtime не имеет DML/endpoint для тарифов и не может сделать их real. В live дополнительно требуются synthetic=false и source=META_VERIFIED, неистёкшее подтверждение и включённые live gates; текущая schema integration.mode=mock/config запрещают это полностью. Нельзя переименовать synthetic источник через UI.
+
+Verified-free случай — отдельное verified_free=true/max_charge=0 правило с теми же freshness/source/region проверками и opt-in классификацией в transport. Отсутствие стоимости не равно нулю. Даже reject/429 нельзя автоматически считать бесплатным; без подтверждения расход держится unknown. Успех HTTP не выдаёт фактический invoice: charged — safe estimate; настоящий invoice reconciliation и текущие официальные условия должны быть отдельно проверены перед live.
+
+Перед будущим импортом тарифов оператор обязан проверить официальную версию/срок/географию/категории/валюту/исключения, источник и условия цены/отказов. Механизм trusted live pricing sync в этом этапе не подключён; no approved tariff → no admission. Процедуры изменения policy обязаны соблюдать integration lock, не переписывать прошлые reservation snapshots и создавать проверяемый audit trail. Никаких автоматических downloads/Meta запросов в текущих миграциях/старте/тестах/dashboard нет.

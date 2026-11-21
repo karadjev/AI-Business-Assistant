@@ -1,0 +1,12 @@
+[Unit]
+Description=AI Business Assistant private staging backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+# Explicitly provision/review this trusted Docker operator; never auto-create it.
+User=aba-operator
+UMask=0077
+TimeoutStartSec=16min
+ExecStart=/usr/bin/python3 /srv/aba/current/scripts/deployment/backup_job.py --release /srv/aba/current --env /srv/aba/staging/environment --project aba-private-staging --backup-dir /srv/aba/staging/backups

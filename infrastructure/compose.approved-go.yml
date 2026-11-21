@@ -1,0 +1,12 @@
+# Overlay the already admitted Go distribution onto cached offline carriers.
+# check-go.sh and go.mod reject an older producer. Never pull/install implicitly.
+services:
+  go:
+    volumes:
+      - ${ABA_APPROVED_GO_ROOT:?Set verified Go1.26.11 GOROOT}:/usr/local/go:ro
+  race:
+    volumes:
+      - ${ABA_APPROVED_GO_ROOT:?Set verified Go1.26.11 GOROOT}:/usr/local/go:ro
+  integration:
+    volumes:
+      - ${ABA_APPROVED_GO_ROOT:?Set verified Go1.26.11 GOROOT}:/usr/local/go:ro

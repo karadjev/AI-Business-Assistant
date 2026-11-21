@@ -1,0 +1,6 @@
+"use client";
+import {useId,useState} from "react";
+export function AttributeFields({attributes={}}:{attributes?:Record<string,string>}){
+ const prefix=useId();const [rows,setRows]=useState(()=>Object.entries(attributes).map(([name,value],id)=>({id,name,value})));
+ return <fieldset className="attribute-editor"><legend>Характеристики товара</legend><p className="field-hint">Например: память — 256 ГБ, цвет — графитовый. Названия должны быть уникальными.</p>{rows.map((row,index)=><div className="attribute-row" key={row.id}><label htmlFor={`${prefix}-${row.id}-name`}>Характеристика {index+1}<input id={`${prefix}-${row.id}-name`} name="attribute_name" required value={row.name} maxLength={64} onChange={e=>setRows(r=>r.map(x=>x.id===row.id?{...x,name:e.target.value}:x))}/></label><label htmlFor={`${prefix}-${row.id}-value`}>Значение {index+1}<input id={`${prefix}-${row.id}-value`} name="attribute_value" value={row.value} maxLength={256} onChange={e=>setRows(r=>r.map(x=>x.id===row.id?{...x,value:e.target.value}:x))}/></label><button type="button" aria-label={`Убрать характеристику ${index+1}`} onClick={()=>setRows(r=>r.filter(x=>x.id!==row.id))}>Убрать</button></div>)}<button type="button" disabled={rows.length>=32} onClick={()=>setRows(r=>[...r,{id:Math.max(-1,...r.map(x=>x.id))+1,name:"",value:""}])}>Добавить характеристику</button></fieldset>
+}

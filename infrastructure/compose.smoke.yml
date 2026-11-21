@@ -1,0 +1,51 @@
+# Explicit isolated smoke overlay; use ONLY with a unique -p project name.
+services:
+  api:
+    environment: &offline
+      LLM_PROVIDER: mock
+      LLM_ENABLE_LIVE: 'false'
+      LLM_EXTERNAL_REQUESTS_AUTHORIZED: 'false'
+      LLM_KILL_SWITCH: 'true'
+      LLM_PLATFORM_BUDGET_MICRORUB: '0'
+      LLM_API_KEY: ''
+      LLM_MODEL: ''
+      LLM_BASE_URL: ''
+      LLM_ALLOWED_BASE_URLS: ''
+      TELEGRAM_TRANSPORT: mock
+      TELEGRAM_EXTERNAL_REQUESTS_AUTHORIZED: 'false'
+      TELEGRAM_SENDING_ENABLED: 'false'
+      TELEGRAM_SENDING_KILL_SWITCH: 'true'
+      TELEGRAM_WEBHOOK_BASE_URL: ''
+      TELEGRAM_APPROVED_WEBHOOK_BASE_URL: ''
+      TELEGRAM_TEST_USER_IDS: ''
+      # Synthetic server encryption key, never a bot token.
+      TELEGRAM_ENCRYPTION_KEY: '1717171717171717171717171717171717171717171717171717171717171717'
+      PUBLIC_ORIGIN: http://web:3000
+    ports: !reset []
+  worker:
+    environment: *offline
+  web:
+    ports: !reset []
+  mailpit:
+    ports: !reset []
+  browser:
+    image: mcr.microsoft.com/playwright:v1.64.0-noble
+    working_dir: /workspace
+    volumes:
+      - ./apps/web:/workspace:ro
+      - ./.local/stage7-browser:/tmp/results
+    environment:
+      SMOKE_API_URL: http://api:8080
+      SMOKE_WEB_URL: http://web:3000
+      SMOKE_REQUIRE_READY: '1'
+      TEST_MAILPIT_URL: http://mailpit:8025
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+      worker:
+        condition: service_started
+    command: [node, node_modules/@playwright/test/cli.js, test, --output=/tmp/results, --grep-invert, 'реальный остановленный']

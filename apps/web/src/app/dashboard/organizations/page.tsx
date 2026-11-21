@@ -1,0 +1,3 @@
+import Link from "next/link";
+import {organizations} from "@/lib/session";
+export default async function Organizations(){const list=await organizations();return <main id="main" tabIndex={-1}><h1>Мои организации</h1><Link prefetch={false} className="button primary" href="/dashboard/organizations/new">Создать магазин</Link>{list.length===0?<p className="lead">У вас пока нет организаций.</p>:<section className="module-grid">{list.map(o=><article className="module-card" key={o.id}><h2>{o.name}</h2><p>{o.role==="owner"?"Владелец":"Участник"}</p><Link prefetch={false} href={`/dashboard?org=${o.id}`}>Открыть →</Link></article>)}</section>}</main>}
