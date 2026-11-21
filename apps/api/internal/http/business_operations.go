@@ -69,6 +69,18 @@ func businessOperations(register operationRegister, decode operationDecode, fail
 	operation(register, decode, fail, "properties/search", 200, func(r *http.Request, t catalog.Tenant, in orders.PropertyFilter) (json.RawMessage, error) {
 		return o.SearchProperties(r.Context(), t, in)
 	})
+	operation(register, decode, fail, "properties/discover", 200, func(r *http.Request, t catalog.Tenant, in orders.PropertySearch) (orders.PropertyPage, error) {
+		return o.FindProperties(r.Context(), t, in)
+	})
+	register("GET", "/api/v1/organizations/{id}/operations/property-viewings/{viewing}", func(w http.ResponseWriter, r *http.Request, session auth.Session) {
+		t := catalog.Tenant{OrganizationID: r.PathValue("id"), Session: session}
+		out, err := o.GetPropertyViewing(r.Context(), t, r.PathValue("viewing"))
+		if err != nil {
+			fail(w, r, err)
+			return
+		}
+		writeJSON(w, 200, out)
+	})
 	operation(register, decode, fail, "requests", 201, func(r *http.Request, t catalog.Tenant, in orders.Intake) (json.RawMessage, error) {
 		return o.PrepareIntake(r.Context(), t, in)
 	})

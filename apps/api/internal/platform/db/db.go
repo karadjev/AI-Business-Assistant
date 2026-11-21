@@ -51,7 +51,7 @@ func (d *Database) Ready(ctx context.Context) error {
 		return errors.New("database unavailable or runtime role unsafe")
 	}
 	var version int
-	if err = d.Pool.QueryRow(ctx, `SELECT version FROM platform.service_metadata WHERE singleton=true`).Scan(&version); err != nil || version != 27 {
+	if err = d.Pool.QueryRow(ctx, `SELECT version FROM platform.service_metadata WHERE singleton=true`).Scan(&version); err != nil || version != 28 {
 		return errors.New("database schema unavailable")
 	}
 	return nil

@@ -14,7 +14,7 @@ import (
 
 // seedStage25 runs only via the fixture's isolated postgres/aba_test DSN guard.
 // It uses independent synthetic organizations and never alters Stage 2.4 seeds.
-func seedStage25(ctx context.Context, c *pgx.Conn) error {
+func seedStage25(ctx context.Context, c *pgx.Conn, realEstate bool) error {
 	var safe bool
 	if err := c.QueryRow(ctx, `SELECT current_database()='aba_test' AND EXISTS(SELECT 1 FROM platform.test_safety WHERE marker='aba-synthetic-isolated') AND to_regclass('platform.service_offerings') IS NOT NULL`).Scan(&safe); err != nil || !safe {
 		return fmt.Errorf("isolated stage25 database required")
@@ -81,12 +81,12 @@ func seedStage25(ctx context.Context, c *pgx.Conn) error {
 				}
 			}
 		}
-		if model == "service" {
+		if model == "service" || (model == "agency" && realEstate) {
 			resource := auth.UUID()
 			if _, err = tx.Exec(ctx, `INSERT INTO platform.service_offerings(id,organization_id,name,status,price_model,price_state,amount_minor,min_minutes,max_minutes,timezone) VALUES($1,$2,'Synthetic25 inspection','active','fixed','known',50000,60,60,'UTC')`, b.Offering, b.ID); err != nil {
 				return err
 			}
-			if _, err = tx.Exec(ctx, `INSERT INTO platform.service_resources(id,organization_id,name,kind,capacity) VALUES($1,$2,'Synthetic25 bay','equipment',1)`, resource, b.ID); err != nil {
+			if _, err = tx.Exec(ctx, `INSERT INTO platform.service_resources(id,organization_id,name,kind,capacity) VALUES($1,$2,CASE WHEN $3 THEN 'Synthetic25 resource' ELSE 'Synthetic25 bay' END,CASE WHEN $3 THEN 'staff' ELSE 'equipment' END,1)`, resource, b.ID, model == "agency"); err != nil {
 				return err
 			}
 			if _, err = tx.Exec(ctx, `INSERT INTO platform.service_offering_resources(organization_id,offering_id,resource_id) VALUES($1,$2,$3)`, b.ID, b.Offering, resource); err != nil {
@@ -101,6 +101,14 @@ func seedStage25(ctx context.Context, c *pgx.Conn) error {
 		if model == "agency" {
 			if _, err = tx.Exec(ctx, `INSERT INTO platform.property_listings(id,organization_id,title,locality,rooms,area_m2,status,verified_until) VALUES($1,$2,'Synthetic25 current listing','Synthetic city',2,64.5,'available',now()+interval '2 days'),($3,$2,'Synthetic25 expired listing','Synthetic city',1,32,'available',now()-interval '1 hour')`, b.Listing, b.ID, auth.UUID()); err != nil {
 				return err
+			}
+			if realEstate {
+				if _, err = tx.Exec(ctx, `UPDATE platform.property_listings SET city='Synthetic city',district='Center',
+				 property_type='apartment',transaction_type='sale',currency_code='RUB',price_amount=9500000,
+				 viewing_offering_id=$3,published_at=now(),updated_at=now() WHERE organization_id=$1 AND id=$2`,
+					b.ID, b.Listing, b.Offering); err != nil {
+					return err
+				}
 			}
 		}
 		result[kind] = b

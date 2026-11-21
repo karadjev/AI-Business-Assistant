@@ -20,7 +20,7 @@ const constructionDelegation = "delegate_construction"
 const serviceDelegation = "delegate_service"
 
 func delegationParent(action string) bool {
-	return action == autoPartsDelegation || action == constructionDelegation || action == serviceDelegation
+	return action == autoPartsDelegation || action == constructionDelegation || action == serviceDelegation || action == realEstateDelegation || action == propertyViewingDelegation
 }
 
 type ConstructionRequirements struct {
@@ -305,6 +305,10 @@ func (d delegationTool) serviceStep(ctx context.Context, out delegationResult) (
 
 // PrepareDelegatedBooking accepts only the saved proposal and uses the parent as the intake idempotency key.
 func (s Service) PrepareDelegatedBooking(ctx context.Context, t catalog.Tenant, id string) (json.RawMessage, error) {
+	return s.prepareDelegatedIntake(ctx, t, id, serviceDelegation)
+}
+
+func (s Service) prepareDelegatedIntake(ctx context.Context, t catalog.Tenant, id, action string) (json.RawMessage, error) {
 	if !organizations.ValidID(id) {
 		return nil, auth.Failure(404, "NOT_FOUND", "Задача не найдена")
 	}
@@ -317,7 +321,7 @@ func (s Service) PrepareDelegatedBooking(ctx context.Context, t catalog.Tenant, 
 	var payload []byte
 	err = tx.QueryRow(ctx, `SELECT j.conversation_id,e.result FROM platform.agent_tasks j
  JOIN platform.agent_executions e ON e.organization_id=j.organization_id AND e.task_id=j.id AND e.status='completed'
- WHERE j.organization_id=$1 AND j.id=$2 AND j.action='delegate_service' AND j.status='completed' AND j.deadline>clock_timestamp()`, t.OrganizationID, id).Scan(&conversation, &payload)
+ WHERE j.organization_id=$1 AND j.id=$2 AND j.action=$3 AND j.status='completed' AND j.deadline>clock_timestamp()`, t.OrganizationID, id, action).Scan(&conversation, &payload)
 	if err != nil {
 		return nil, tenancy.Error(err)
 	}

@@ -31,6 +31,7 @@ import (
 	"github.com/karadjev/AI-Business-Assistant/apps/api/internal/conversations"
 	httpapi "github.com/karadjev/AI-Business-Assistant/apps/api/internal/http"
 	"github.com/karadjev/AI-Business-Assistant/apps/api/internal/instagram"
+	"github.com/karadjev/AI-Business-Assistant/apps/api/internal/orders"
 	"github.com/karadjev/AI-Business-Assistant/apps/api/internal/platform/db"
 	"github.com/karadjev/AI-Business-Assistant/apps/api/internal/platform/migrate"
 	"github.com/karadjev/AI-Business-Assistant/apps/api/internal/servicebooking"
@@ -180,11 +181,11 @@ func TestInstagramOfflineIsolated(t *testing.T) {
 			t.Fatalf("inbound worker: %t %v", worked, err)
 		}
 	}
-	prep := func(index int, consent bool) fixture {
+	connect := func(index int, consent bool, model, industry string) fixture {
 		t.Helper()
 		f := fixture{owner: seedStage23Owner(t, d, admin, ctx, identity, 310+index)}
 		f.org = f.owner.tenant.OrganizationID
-		if err := agents.UpdateProfile(ctx, f.owner.tenant, "service", "vehicle_service", 1); err != nil {
+		if err := agents.UpdateProfile(ctx, f.owner.tenant, model, industry, 1); err != nil {
 			t.Fatal(err)
 		}
 		settings, err := instagramService.Start(ctx, f.owner.tenant)
@@ -207,6 +208,11 @@ func TestInstagramOfflineIsolated(t *testing.T) {
 		if err := admin.QueryRow(ctx, "SELECT conversation_id FROM platform.channel_principals WHERE integration_id=$1", f.integration).Scan(&f.conversation); err != nil {
 			t.Fatal(err)
 		}
+		return f
+	}
+	prep := func(index int, consent bool) fixture {
+		t.Helper()
+		f := connect(index, consent, "service", "vehicle_service")
 		selection, _ := stage26ConfigureBooking(t, ctx, f.owner.tenant, servicebooking.Service{Pool: d.Pool}, 1050+index)
 		var task struct{ ID string }
 		if err := json.Unmarshal(post(f, "/agent-delegations/auto-service", agentruntime.IndustryDelegationRequest[agentruntime.ServiceRequirements]{
@@ -351,6 +357,81 @@ func TestInstagramOfflineIsolated(t *testing.T) {
 		stop()
 		assertState(next, tc.state, 1)
 	}
+	t.Run("real-estate-offer-and-viewing-decision", func(t *testing.T) {
+		f := connect(6, true, "agency", "real_estate")
+		selection, _ := stage26ConfigureBooking(t, ctx, f.owner.tenant, servicebooking.Service{Pool: d.Pool}, 1060)
+		listing := auth.UUID()
+		execSQL(`INSERT INTO platform.property_listings(id,organization_id,title,locality,city,rooms,area_m2,status,
+		 verified_until,price_amount,currency_code,property_type,transaction_type,viewing_offering_id)
+		 VALUES($1,$2,'Synthetic Instagram apartment','Synthetic city','Synthetic city',2,51,'available',
+		  now()+interval '1 day',9500000,'RUB','apartment','sale',$3)`, listing, f.org, selection.OfferingID)
+		submit := func(path string, body any) string {
+			t.Helper()
+			var task struct{ ID string }
+			if json.Unmarshal(post(f, path, body, 202), &task) != nil || task.ID == "" {
+				t.Fatal("expected persisted parent")
+			}
+			return task.ID
+		}
+		process := func(n int) {
+			t.Helper()
+			for range n {
+				if worked, err := agents.ProcessOne(ctx); !worked || err != nil {
+					t.Fatalf("real estate worker %t: %v", worked, err)
+				}
+			}
+		}
+		budget := int64(10000000)
+		offer := submit("/agent-delegations/real-estate", agentruntime.RealEstateRequest{
+			IndustryDelegationRequest: agentruntime.IndustryDelegationRequest[agentruntime.PropertyRequirements]{
+				ConversationID: f.conversation, IdempotencyKey: auth.UUID(),
+				Requirements: agentruntime.PropertyRequirements{PropertyCriteria: orders.PropertyCriteria{
+					City: "Synthetic city", Type: "apartment", Transaction: "sale", Currency: "RUB", MaxPrice: &budget,
+				}},
+			},
+		})
+		process(4)
+		f.receipt = offer
+		assertState(f, "pending", 0)
+		stop := start(normal, "accept")
+		time.Sleep(1200 * time.Millisecond)
+		stop()
+		assertState(f, "pending", 0)
+		stop = start(binary, "accept")
+		assertState(f, "sent", 1)
+		stop()
+		assertAudit(f, "property.delivery_state", "sent")
+		viewing := submit("/agent-delegations/property-viewing", agentruntime.PropertyViewingRequest{
+			ConversationID: f.conversation, IdempotencyKey: auth.UUID(), OfferTaskID: offer, PropertyID: listing, Selection: selection,
+		})
+		process(3)
+		var order struct {
+			ID      string
+			Version int64
+		}
+		if json.Unmarshal(post(f, "/agent-delegations/property-viewing/"+viewing+"/prepare", nil, 201), &order) != nil || order.ID == "" {
+			t.Fatal("expected prepared viewing request")
+		}
+		process(1)
+		post(f, "/orders/"+order.ID+"/confirm", stage26Command(order.Version), 200)
+		process(1)
+		if err := admin.QueryRow(ctx, `SELECT a.id FROM platform.agent_tasks a JOIN platform.order_events e
+		 ON (e.organization_id,e.id)=(a.organization_id,a.idempotency_key)
+		 WHERE a.parent_id=$1 AND a.action='delegation.property_receipt' AND e.kind='confirmed'`, viewing).Scan(&f.receipt); err != nil {
+			t.Fatal(err)
+		}
+		stop = start(binary, "accept")
+		assertState(f, "sent", 1)
+		stop()
+		assertAudit(f, "property.delivery_state", "sent")
+		var correct bool
+		err := admin.QueryRow(ctx, `SELECT q.external_user_id='9700' AND q.conversation_id=$3
+		 AND q.payload->>'text' LIKE 'Просмотр подтверждён.%' AND q.provider_id='mock-'||q.id::text
+		 FROM platform.channel_outbox q WHERE (q.organization_id,q.id)=($1,$2)`, f.org, f.receipt, f.conversation).Scan(&correct)
+		if err != nil || !correct {
+			t.Fatalf("wrong recipient or viewing receipt: %v", err)
+		}
+	})
 	if _, err := admin.Exec(ctx, `DO $$ BEGIN IF EXISTS(SELECT FROM platform.channel_outbox q JOIN platform.channel_integrations i ON
  (i.organization_id,i.id)=(q.organization_id,q.integration_id) WHERE i.channel='instagram'
  AND ((q.status='sent' AND coalesce(q.provider_id,'') NOT LIKE 'mock-%') OR i.sending_enabled)) THEN

@@ -63,7 +63,7 @@ func TestDatabaseAndMigrations(t *testing.T) {
 	if e = migrate.Run(ctx, migrationDSN, "up"); e != nil {
 		t.Fatal(e)
 	}
-	t.Run("instagram-schema-up", func(t *testing.T) { testInstagramSchemaStage22(t, conn, ctx, 27) })
+	t.Run("instagram-schema-up", func(t *testing.T) { testInstagramSchemaStage22(t, conn, ctx, 28) })
 	if e = migrate.Run(ctx, migrationDSN, "up"); e != nil {
 		t.Fatal("repeat up failed", e)
 	}
@@ -88,6 +88,15 @@ func TestDatabaseAndMigrations(t *testing.T) {
 	if _, e = database.Pool.Exec(ctx, `CREATE TABLE platform.forbidden (id integer)`); e == nil {
 		t.Fatal("runtime can perform DDL")
 	}
+	if e = migrate.Run(ctx, migrationDSN, "down"); e != nil {
+		t.Fatal(e)
+	}
+	t.Run("real-estate-schema-down", func(t *testing.T) {
+		var version int
+		if err := conn.QueryRow(ctx, "SELECT version FROM platform.service_metadata WHERE singleton").Scan(&version); err != nil || version != 27 {
+			t.Fatalf("real estate rollback: %d %v", version, err)
+		}
+	})
 	if e = migrate.Run(ctx, migrationDSN, "down"); e != nil {
 		t.Fatal(e)
 	}
@@ -208,7 +217,7 @@ func TestDatabaseAndMigrations(t *testing.T) {
 	if e = migrate.Run(ctx, migrationDSN, "up"); e != nil {
 		t.Fatal(e)
 	}
-	t.Run("instagram-schema-reapply", func(t *testing.T) { testInstagramSchemaStage22(t, conn, ctx, 27) })
+	t.Run("instagram-schema-reapply", func(t *testing.T) { testInstagramSchemaStage22(t, conn, ctx, 28) })
 	testIdentity(t, database, conn, ctx)
 	testCatalog(t, database, conn, ctx)
 	testStage5(t, database, conn, ctx)
@@ -229,6 +238,7 @@ func TestDatabaseAndMigrations(t *testing.T) {
 	t.Run("stage25-catalog", func(t *testing.T) { testStage25Catalog(t, database, conn, ctx) })
 	t.Run("stage25-booking", func(t *testing.T) { testStage25Booking(t, database, conn, ctx) })
 	t.Run("stage26-reservation", func(t *testing.T) { testStage26Reservation(t, database, conn, ctx) })
+	t.Run("stage263-real-estate", func(t *testing.T) { testStage263RealEstate(t, database, conn, ctx) })
 	// Refuse a populated draft schema rollback and preserve catalog data.
 	var before, after string
 	const snapshot = `SELECT md5(coalesce((SELECT jsonb_agg(to_jsonb(x) ORDER BY id)::text FROM platform.products x),''))`

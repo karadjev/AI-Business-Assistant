@@ -44,8 +44,8 @@ func run() error {
 		return e
 	}
 	defer c.Close(ctx)
-	if len(os.Args) == 2 && os.Args[1] == "stage25" {
-		return seedStage25(ctx, c)
+	if len(os.Args) == 2 && (os.Args[1] == "stage25" || os.Args[1] == "stage263") {
+		return seedStage25(ctx, c, os.Args[1] == "stage263")
 	}
 	if len(os.Args) == 2 && os.Args[1] == "stage26" {
 		return seedStage26(ctx, c)

@@ -116,6 +116,38 @@ func agentRoutes(register func(string, string, func(http.ResponseWriter, *http.R
 		}
 		writeJSON(w, 201, out)
 	})
+	register("POST", root+"/agent-delegations/real-estate", func(w http.ResponseWriter, r *http.Request, session auth.Session) {
+		var in agentruntime.RealEstateRequest
+		if !decode(w, r, &in) {
+			return
+		}
+		id, err := s.SubmitRealEstate(r.Context(), tenant(r, session), in)
+		if err != nil {
+			fail(w, r, err)
+			return
+		}
+		writeJSON(w, 202, map[string]string{"id": id})
+	})
+	register("POST", root+"/agent-delegations/property-viewing", func(w http.ResponseWriter, r *http.Request, session auth.Session) {
+		var in agentruntime.PropertyViewingRequest
+		if !decode(w, r, &in) {
+			return
+		}
+		id, err := s.SubmitPropertyViewing(r.Context(), tenant(r, session), in)
+		if err != nil {
+			fail(w, r, err)
+			return
+		}
+		writeJSON(w, 202, map[string]string{"id": id})
+	})
+	register("POST", root+"/agent-delegations/property-viewing/{task}/prepare", func(w http.ResponseWriter, r *http.Request, session auth.Session) {
+		out, err := s.PreparePropertyViewing(r.Context(), tenant(r, session), r.PathValue("task"))
+		if err != nil {
+			fail(w, r, err)
+			return
+		}
+		writeJSON(w, 201, out)
+	})
 	register("POST", root+"/agent-workflows/preview", func(w http.ResponseWriter, r *http.Request, session auth.Session) {
 		var in agentruntime.WorkflowPreviewRequest
 		if !decode(w, r, &in) {

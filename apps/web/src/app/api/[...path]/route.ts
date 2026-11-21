@@ -28,7 +28,7 @@ function catalogMethods(path:string):string[]|undefined{
  if(new RegExp(`^${root}/agent-tasks$`).test(path))return ["GET","POST"];
  if(new RegExp(`^${root}/marketing-drafts$`).test(path))return ["GET"];
  if(new RegExp(`^${root}/marketing-drafts/[0-9a-f-]{36}/review$`).test(path))return ["POST"];
- if(new RegExp(`^${root}/agent-delegations/(auto-parts|construction|auto-service|auto-service/[0-9a-f-]{36}/prepare)$`).test(path))return ["POST"];
+ if(new RegExp(`^${root}/agent-delegations/(auto-parts|construction|auto-service|real-estate|property-viewing|(auto-service|property-viewing)/[0-9a-f-]{36}/prepare)$`).test(path))return ["POST"];
  if(new RegExp(`^${root}/agent-workflows/preview$`).test(path))return ["POST"];
  if(new RegExp(`^${root}/agent-approvals$`).test(path))return ["GET"];
  if(new RegExp(`^${root}/agent-approvals/[0-9a-f-]{36}/decision$`).test(path))return ["POST"];
@@ -37,7 +37,8 @@ function catalogMethods(path:string):string[]|undefined{
  if(new RegExp(`^${root}/conversations/[0-9a-f-]{36}/purge-test-data$`).test(path))return ["POST"];
  if(new RegExp(`^${root}/integrations/telegram$`).test(path))return ["GET"];
  if(new RegExp(`^${root}/integrations/telegram/(connect|check|disconnect|synthetic-updates)$`).test(path))return ["POST"];
- if(new RegExp(`^${root}/operations/(catalog/(search|fitment)|construction/calculate|services/(search|availability|config/(resources|offerings|windows))|properties/search|requests)$`).test(path))return ["POST"];
+ if(new RegExp(`^${root}/operations/property-viewings/[0-9a-f-]{36}$`).test(path))return ["GET"];
+ if(new RegExp(`^${root}/operations/(catalog/(search|fitment)|construction/calculate|services/(search|availability|config/(resources|offerings|windows))|properties/(search|discover)|requests)$`).test(path))return ["POST"];
  if(new RegExp(`^${root}/(orders|conversations)$`).test(path))return path.endsWith("conversations")?["GET","POST"]:["GET"];
  if(new RegExp(`^${root}/(orders|conversations)/[0-9a-f-]{36}$`).test(path))return ["GET"];
  if(new RegExp(`^${root}/orders/[0-9a-f-]{36}/(confirm|reject|cancel|complete)$`).test(path))return ["POST"];

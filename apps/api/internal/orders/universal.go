@@ -148,13 +148,13 @@ func (s Service) prepareIntake(ctx context.Context, t catalog.Tenant, in Intake,
 		return nil, err
 	}
 	var allowed bool
-	if err = tx.QueryRow(ctx, `SELECT c.channel='internal_chat' OR ($3::boolean
-	 AND c.channel IN ('telegram','whatsapp','instagram') AND c.status='open' AND c.expires_at>clock_timestamp()
-	 AND $4::text IN ('service_booking','hybrid_order') AND EXISTS(
+	if err = tx.QueryRow(ctx, `SELECT (c.channel='internal_chat' AND NOT ($3::boolean AND $4='property_viewing_request')) OR ($3::boolean
+	 AND c.channel IN ('internal_chat','telegram','whatsapp','instagram') AND c.status='open' AND c.expires_at>clock_timestamp()
+	 AND $4::text IN ('service_booking','hybrid_order','property_viewing_request') AND EXISTS(
 	  SELECT 1 FROM platform.agent_tasks j JOIN platform.agent_executions e
 	  ON e.organization_id=j.organization_id AND e.task_id=j.id AND e.status='completed'
 	  WHERE j.organization_id=c.organization_id AND j.conversation_id=c.id AND j.id=$5
-	  AND j.action='delegate_service' AND j.status='completed' AND j.deadline>clock_timestamp()
+	  AND j.action=CASE WHEN $4='property_viewing_request' THEN 'delegate_property_viewing' ELSE 'delegate_service' END AND j.status='completed' AND j.deadline>clock_timestamp()
 	  AND e.result->0->>'state'='approval_required' AND e.result->0->'proposal'->>'kind'=$4
 	  AND e.result->0->'proposal'->'details'=$6::jsonb))
 	 FROM platform.conversations c WHERE c.organization_id=$1 AND c.id=$2`,
@@ -351,10 +351,11 @@ func (s Service) SearchProperties(ctx context.Context, t catalog.Tenant, f Prope
 	 FROM (
 	   SELECT * FROM (
 	     SELECT id,title,locality,rooms,area_m2,price_amount,currency_code,property_type,viewing_offering_id,
-	       CASE WHEN status='available' AND verified_until<=statement_timestamp() THEN 'unknown' ELSE status END AS status,verified_until
+	       platform.property_availability(status,property_status,verified_until) AS status,verified_until
 	     FROM platform.property_listings
 	     WHERE organization_id=$1 AND ($2::int IS NULL OR rooms=$2)
 	       AND ($3::int IS NULL OR area_m2 >= $3) AND ($4::int IS NULL OR area_m2 <= $4)
+	       AND (($5::bigint IS NULL AND $6::bigint IS NULL) OR currency_code='RUB')
 	       AND ($5::bigint IS NULL OR price_amount >= $5) AND ($6::bigint IS NULL OR price_amount <= $6)
 	       AND ($7='' OR lower(locality)=lower($7)) AND ($8='' OR property_type=$8)
 	   ) listings

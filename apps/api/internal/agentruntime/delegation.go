@@ -101,20 +101,22 @@ type delegatedPart struct {
 	Compatibility string `json:"compatibility"`
 }
 type delegationResult struct {
-	Message         string                    `json:"message,omitempty"`
-	PartRequirement string                    `json:"part_requirement,omitempty"`
-	Receipt         json.RawMessage           `json:"receipt,omitempty"`
-	Construction    *ConstructionRequirements `json:"construction,omitempty"`
-	Service         *ServiceRequirements      `json:"service,omitempty"`
-	Calculation     *bf.ConstructionResult    `json:"calculation,omitempty"`
-	Material        *delegationMaterial       `json:"material,omitempty"`
-	Offering        *delegationOffering       `json:"offering,omitempty"`
-	State           string                    `json:"state"`
-	Required        []string                  `json:"required,omitempty"`
-	Requirements    *AutoPartsRequirements    `json:"requirements,omitempty"`
-	Parts           []delegatedPart           `json:"parts,omitempty"`
-	Proposal        *WorkflowDraft            `json:"proposal,omitempty"`
-	Children        []delegationChild         `json:"children,omitempty"`
+	PropertyRequirements *PropertyRequirements     `json:"property_requirements,omitempty"`
+	Properties           []orders.Property         `json:"properties,omitempty"`
+	Message              string                    `json:"message,omitempty"`
+	PartRequirement      string                    `json:"part_requirement,omitempty"`
+	Receipt              json.RawMessage           `json:"receipt,omitempty"`
+	Construction         *ConstructionRequirements `json:"construction,omitempty"`
+	Service              *ServiceRequirements      `json:"service,omitempty"`
+	Calculation          *bf.ConstructionResult    `json:"calculation,omitempty"`
+	Material             *delegationMaterial       `json:"material,omitempty"`
+	Offering             *delegationOffering       `json:"offering,omitempty"`
+	State                string                    `json:"state"`
+	Required             []string                  `json:"required,omitempty"`
+	Requirements         *AutoPartsRequirements    `json:"requirements,omitempty"`
+	Parts                []delegatedPart           `json:"parts,omitempty"`
+	Proposal             *WorkflowDraft            `json:"proposal,omitempty"`
+	Children             []delegationChild         `json:"children,omitempty"`
 }
 
 type delegationContext struct {
@@ -142,6 +144,12 @@ func (d delegationTool) Next(ctx context.Context, scope af.Scope, snapshot af.Sn
 }
 
 func (d delegationTool) execute(ctx context.Context, scope af.Scope, _ struct{}) (delegationResult, error) {
+	if d.job.Action == "delegation.property_receipt" {
+		if scope != d.scope {
+			return delegationResult{}, af.ErrDenied
+		}
+		return d.propertyReceipt(ctx)
+	}
 	if d.job.Action == "delegation.service_receipt" {
 		var raw []byte
 		if err := d.service.Pool.QueryRow(ctx, "SELECT platform.service_receipt_context($1,$2)", d.job.ID, d.lease).Scan(&raw); err != nil {
@@ -197,9 +205,25 @@ func (d delegationTool) execute(ctx context.Context, scope af.Scope, _ struct{})
 			}
 			out.State, out.Required, out.Proposal = last.Result.State, last.Result.Required, last.Result.Proposal
 			out.PartRequirement = last.Result.PartRequirement
+			out.PropertyRequirements, out.Properties = last.Result.PropertyRequirements, last.Result.Properties
+			out.Message = last.Result.Message
 			out.Calculation, out.Material, out.Offering = last.Result.Calculation, last.Result.Material, last.Result.Offering
 		}
+		if d.job.Action == realEstateDelegation && len(out.Properties) != 0 {
+			// The child executions keep their original snapshots. The parent carries
+			// each verified listing once so large cards fit the persisted result limit.
+			for i := range out.Children {
+				if child := out.Children[i].Result; child != nil && len(child.Properties) != 0 {
+					summary := *child
+					summary.Properties = nil
+					out.Children[i].Result = &summary
+				}
+			}
+		}
 		return out, nil
+	}
+	if strings.HasPrefix(d.job.Action, "delegation.property_") {
+		return d.propertyStep(ctx, evidence)
 	}
 	if strings.HasPrefix(d.job.Action, "delegation.construction_") || strings.HasPrefix(d.job.Action, "delegation.service_") {
 		return d.industry(ctx, evidence)
