@@ -63,7 +63,7 @@ func TestDatabaseAndMigrations(t *testing.T) {
 	if e = migrate.Run(ctx, migrationDSN, "up"); e != nil {
 		t.Fatal(e)
 	}
-	t.Run("instagram-schema-up", func(t *testing.T) { testInstagramSchemaStage22(t, conn, ctx, 28) })
+	t.Run("instagram-schema-up", func(t *testing.T) { testInstagramSchemaStage22(t, conn, ctx, 29) })
 	if e = migrate.Run(ctx, migrationDSN, "up"); e != nil {
 		t.Fatal("repeat up failed", e)
 	}
@@ -88,6 +88,17 @@ func TestDatabaseAndMigrations(t *testing.T) {
 	if _, e = database.Pool.Exec(ctx, `CREATE TABLE platform.forbidden (id integer)`); e == nil {
 		t.Fatal("runtime can perform DDL")
 	}
+	if e = migrate.Run(ctx, migrationDSN, "down"); e != nil {
+		t.Fatal(e)
+	}
+	t.Run("conversational-schema-down", func(t *testing.T) {
+		var version int
+		var removed bool
+		if err := conn.QueryRow(ctx, `SELECT version,to_regclass('platform.conversation_routes') IS NULL
+		 FROM platform.service_metadata WHERE singleton`).Scan(&version, &removed); err != nil || version != 28 || !removed {
+			t.Fatalf("conversational rollback: %d %t %v", version, removed, err)
+		}
+	})
 	if e = migrate.Run(ctx, migrationDSN, "down"); e != nil {
 		t.Fatal(e)
 	}
@@ -217,7 +228,7 @@ func TestDatabaseAndMigrations(t *testing.T) {
 	if e = migrate.Run(ctx, migrationDSN, "up"); e != nil {
 		t.Fatal(e)
 	}
-	t.Run("instagram-schema-reapply", func(t *testing.T) { testInstagramSchemaStage22(t, conn, ctx, 28) })
+	t.Run("instagram-schema-reapply", func(t *testing.T) { testInstagramSchemaStage22(t, conn, ctx, 29) })
 	testIdentity(t, database, conn, ctx)
 	testCatalog(t, database, conn, ctx)
 	testStage5(t, database, conn, ctx)

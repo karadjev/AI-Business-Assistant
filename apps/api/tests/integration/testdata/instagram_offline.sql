@@ -50,6 +50,25 @@ CREATE TRIGGER instagram_offline_enqueue BEFORE INSERT ON platform.agent_audit F
  WHEN(NEW.action IN ('booking.delivery','property.delivery') AND NEW.result='instagram_send_disabled')
  EXECUTE FUNCTION platform.instagram_offline_enqueue();
 
+-- Promote only the cancelled placeholder produced by the normal Instagram
+-- outbox trigger. This fixture is unavailable to the normal worker.
+CREATE FUNCTION platform.instagram_offline_conversation_enqueue() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,platform,pg_temp AS $$
+BEGIN
+ UPDATE platform.channel_outbox q SET status='pending',payload=q.payload||'{"conversational":true}'::jsonb
+ FROM platform.channel_integrations i
+ WHERE (q.organization_id,q.conversation_id,q.id)=(NEW.organization_id,NEW.conversation_id,NEW.id)
+ AND (i.organization_id,i.id)=(q.organization_id,q.integration_id)
+ AND i.channel='instagram' AND i.mode='mock' AND NOT i.sending_enabled
+ AND q.status='cancelled' AND octet_length(NEW.content)<=1000
+ AND platform.conversation_current_reply(NEW.organization_id,NEW.conversation_id,NEW.id);
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION platform.instagram_offline_conversation_enqueue() FROM PUBLIC;
+CREATE TRIGGER zz_instagram_offline_conversation_enqueue AFTER INSERT ON platform.messages FOR EACH ROW
+ WHEN(NEW.role='assistant' AND NEW.data @> '{"conversation_route":true}')
+ EXECUTE FUNCTION platform.instagram_offline_conversation_enqueue();
+
 CREATE FUNCTION platform.instagram_offline_claim(p_proof bytea,p_cap uuid) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,platform,pg_temp AS $$
 DECLARE q platform.channel_outbox; c platform.conversations; admitted jsonb;
@@ -57,14 +76,15 @@ BEGIN
  SELECT x.* INTO q FROM platform.channel_outbox x JOIN platform.channel_integrations i
  ON (i.organization_id,i.id)=(x.organization_id,x.integration_id)
  WHERE i.channel='instagram' AND i.worker_hash=sha256(p_proof)
- AND (x.booking_order_id IS NOT NULL OR x.payload->>'real_estate'='true') AND x.status='pending' AND x.available_at<=clock_timestamp()
+ AND (x.booking_order_id IS NOT NULL OR x.payload->>'real_estate'='true' OR x.payload->>'conversational'='true') AND x.status='pending' AND x.available_at<=clock_timestamp()
  ORDER BY x.created_at,x.id LIMIT 1 FOR UPDATE OF x SKIP LOCKED;
  IF NOT FOUND THEN RETURN NULL; END IF;
 
  -- Keep consent, channel controls and booking status stable through the in-memory provider call.
  SELECT * INTO c FROM platform.conversations WHERE organization_id=q.organization_id AND id=q.conversation_id FOR SHARE NOWAIT;
  IF NOT pg_try_advisory_xact_lock(hashtextextended(q.integration_id::text,8210))
- OR NOT pg_try_advisory_xact_lock(CASE WHEN q.payload->>'real_estate'='true'
+ OR NOT pg_try_advisory_xact_lock(CASE WHEN q.payload->>'conversational'='true' THEN hashtextextended('conversation:'||q.conversation_id::text,0)
+ WHEN q.payload->>'real_estate'='true'
  THEN hashtextextended('real-estate-notification:'||q.organization_id::text,0)
  ELSE hashtextextended('booking-notification:'||q.booking_order_id::text,0) END) THEN
    RETURN NULL;
@@ -85,13 +105,13 @@ BEGIN
  AND x.permissions @> ARRAY['instagram_business_basic','instagram_business_manage_messages'] AND x.token_expires_at>clock_timestamp()
  AND p.id=c.customer_id AND p.channel='instagram' AND p.window_until>clock_timestamp()
  AND c.channel='instagram' AND c.status='open' AND c.control_mode='agent' AND c.expires_at>clock_timestamp()
- AND platform.booking_notification_consent(c.organization_id,c.id)
- AND ((q.payload->>'real_estate'='true' AND platform.real_estate_notification_current(q.id,q.organization_id,q.conversation_id))
+ AND ((q.payload->>'conversational'='true' AND platform.conversation_current_reply(q.organization_id,q.conversation_id,q.id))
+ OR (platform.booking_notification_consent(c.organization_id,c.id) AND ((q.payload->>'real_estate'='true' AND platform.real_estate_notification_current(q.id,q.organization_id,q.conversation_id))
  OR ((q.payload->>'real_estate' IS DISTINCT FROM 'true') AND o.version::text=q.payload->>'version' AND o.status=q.payload->>'status'
  AND (o.status<>'confirmed' OR (EXISTS(SELECT 1 FROM platform.service_bookings b
    WHERE b.organization_id=o.organization_id AND b.request_id=o.id AND b.status='confirmed')
    AND (o.request_kind<>'hybrid_order' OR EXISTS(SELECT 1 FROM platform.hybrid_reservations h
-   WHERE h.organization_id=o.organization_id AND h.order_id=o.id AND h.status='active' AND h.expires_at>clock_timestamp()))))));
+   WHERE h.organization_id=o.organization_id AND h.order_id=o.id AND h.status='active' AND h.expires_at>clock_timestamp()))))))));
  IF admitted IS NULL THEN
    UPDATE platform.channel_outbox SET status='cancelled',version=version+1 WHERE id=q.id;
  ELSE
@@ -108,7 +128,7 @@ LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,platform,pg_temp AS $$
      capability=NULL,provider_id=nullif(p_id,''),version=version+1
    FROM platform.channel_integrations i
    WHERE (i.organization_id,i.id)=(q.organization_id,q.integration_id) AND i.channel='instagram'
-   AND i.mode='mock' AND i.worker_hash=sha256(p_proof) AND (q.booking_order_id IS NOT NULL OR q.payload->>'real_estate'='true')
+   AND i.mode='mock' AND i.worker_hash=sha256(p_proof) AND (q.booking_order_id IS NOT NULL OR q.payload->>'real_estate'='true' OR q.payload->>'conversational'='true')
    AND q.status='sending' AND q.capability=p_cap
    AND p_state IN ('sent','failed','delivery_unknown','pending')
    AND (p_state<>'pending' OR (q.attempts<5 AND p_delay BETWEEN 1 AND 3600))

@@ -37,7 +37,7 @@ func testStage263RealEstate(t *testing.T, d *db.Database, admin *pgx.Conn, ctx c
 	svc := agentruntime.Service{Pool: d.Pool, Key: key}
 	var forcedTables int
 	if err := admin.QueryRow(ctx, `SELECT count(*) FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
-	 WHERE n.nspname='platform' AND c.relkind='r' AND c.relrowsecurity AND c.relforcerowsecurity`).Scan(&forcedTables); err != nil || forcedTables != 61 {
+	 WHERE n.nspname='platform' AND c.relkind='r' AND c.relrowsecurity AND c.relforcerowsecurity`).Scan(&forcedTables); err != nil || forcedTables != 62 {
 		t.Fatalf("FORCE RLS tables=%d: %v", forcedTables, err)
 	}
 

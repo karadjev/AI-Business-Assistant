@@ -14,7 +14,7 @@ import (
 // Call with 17 after the initial up, 16 immediately after down, and 17 after reapply.
 func testInstagramSchemaStage22(t *testing.T, conn *pgx.Conn, ctx context.Context, wantVersion int) {
 	t.Helper()
-	if wantVersion < 16 || wantVersion > 28 {
+	if wantVersion < 16 || wantVersion > 29 {
 		t.Fatalf("unsupported Instagram schema checkpoint: %d", wantVersion)
 	}
 	var version int

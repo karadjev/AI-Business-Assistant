@@ -101,6 +101,10 @@ type delegatedPart struct {
 	Compatibility string `json:"compatibility"`
 }
 type delegationResult struct {
+	Route                *conversationRoute        `json:"route,omitempty"`
+	Catalog              []conversationProduct     `json:"catalog,omitempty"`
+	Order                *conversationOrder        `json:"order,omitempty"`
+	ConversationReply    string                    `json:"conversation_reply,omitempty"`
 	PropertyRequirements *PropertyRequirements     `json:"property_requirements,omitempty"`
 	Properties           []orders.Property         `json:"properties,omitempty"`
 	Message              string                    `json:"message,omitempty"`
@@ -120,8 +124,9 @@ type delegationResult struct {
 }
 
 type delegationContext struct {
-	Input    json.RawMessage   `json:"input"`
-	Children []delegationChild `json:"children"`
+	ConversationRouted bool              `json:"conversation_routed"`
+	Input              json.RawMessage   `json:"input"`
+	Children           []delegationChild `json:"children"`
 }
 
 type delegationTool struct{ *attempt }
@@ -207,7 +212,11 @@ func (d delegationTool) execute(ctx context.Context, scope af.Scope, _ struct{})
 			out.PartRequirement = last.Result.PartRequirement
 			out.PropertyRequirements, out.Properties = last.Result.PropertyRequirements, last.Result.Properties
 			out.Message = last.Result.Message
+			out.Route, out.Catalog, out.Order = last.Result.Route, last.Result.Catalog, last.Result.Order
 			out.Calculation, out.Material, out.Offering = last.Result.Calculation, last.Result.Material, last.Result.Offering
+			if evidence.ConversationRouted {
+				out.ConversationReply = conversationalWorkflowReply(d.job.Action, out)
+			}
 		}
 		if d.job.Action == realEstateDelegation && len(out.Properties) != 0 {
 			// The child executions keep their original snapshots. The parent carries
@@ -221,6 +230,9 @@ func (d delegationTool) execute(ctx context.Context, scope af.Scope, _ struct{})
 			}
 		}
 		return out, nil
+	}
+	if strings.HasPrefix(d.job.Action, "delegation.conversation_") {
+		return d.conversationStep(ctx, evidence)
 	}
 	if strings.HasPrefix(d.job.Action, "delegation.property_") {
 		return d.propertyStep(ctx, evidence)

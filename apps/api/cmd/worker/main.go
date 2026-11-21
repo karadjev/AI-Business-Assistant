@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"errors"
 	"github.com/karadjev/AI-Business-Assistant/apps/api/internal/agent"
 	"github.com/karadjev/AI-Business-Assistant/apps/api/internal/agentruntime"
 	"github.com/karadjev/AI-Business-Assistant/apps/api/internal/auth"
@@ -58,6 +60,15 @@ func execute() error {
 		return e
 	}
 	tg := telegram.Service{Log: log, Pool: database.Pool, Config: tc, Transport: telegram.NewTransport(tc), Chat: &conversations.Service{Pool: database.Pool, Config: agentConfig, Provider: agent.NewProvider(agentConfig), Log: log}}
+	agents := agentruntime.Service{Pool: database.Pool, Key: ac.RetentionKey()}
+	if os.Getenv("CONVERSATIONAL_ORCHESTRATION_ENABLED") == "true" {
+		if cfg.Environment != "test" || agentConfig.Provider != "mock" || len(agents.Key) != 32 {
+			log.Error("conversational_orchestration_requires_offline_test_configuration")
+			return errors.New("invalid conversational orchestration configuration")
+		}
+		proofHash := sha256.Sum256(agents.Proof())
+		tg.Chat.RoutingWorkerHash = proofHash[:]
+	}
 	ledger := costcontrol.Service{Pool: database.Pool, Config: agentConfig}
 	service := auth.New(database.Pool, ac)
 	log.Info("worker_started", "mode", "dev_email_and_mock_telegram")
@@ -78,7 +89,6 @@ func execute() error {
 		log.Error("instagram_queue_configuration_invalid")
 		return err
 	}
-	agents := agentruntime.Service{Pool: database.Pool, Key: ac.RetentionKey()}
 	cleanup := catalog.Service{Pool: database.Pool}
 	reservations := orders.Service{Pool: database.Pool}
 	lastCleanup := time.Time{}

@@ -87,7 +87,7 @@ func (e Engine) Receive(ctx context.Context, t catalog.Tenant, m Message) error 
 	if m.Channel == Instagram {
 		metadata, _ = json.Marshal(map[string]any{"channel": "instagram", "external_message_id": m.ExternalMessageID, "sender_id": m.ExternalUserID, "provider_timestamp": m.ProviderTimestamp, "attachments": m.Attachments, "reply_to": m.ReplyTo, "message_type": m.Kind})
 	}
-	_, err := e.Chat.Send(ctx, t, m.ConversationID, conversations.SendInput{Text: text, Role: "customer", IdempotencyKey: m.CorrelationID, ChannelMetadata: metadata})
+	_, err := e.Chat.Send(ctx, t, m.ConversationID, conversations.SendInput{Text: text, Role: "customer", IdempotencyKey: m.CorrelationID, ChannelMetadata: metadata, RouteInbound: m.Kind == Text})
 
 	return err
 }

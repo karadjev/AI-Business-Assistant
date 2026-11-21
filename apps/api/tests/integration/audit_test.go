@@ -362,15 +362,23 @@ func testAuditRLS(t *testing.T, d *db.Database, admin *pgx.Conn, ctx context.Con
 	if e = rows.Err(); e != nil {
 		t.Fatal(e)
 	}
-	// Migration 00017 added two tenant tables. They must pass the same
-	// outsider and tenant substitution probes as the existing inventory.
-	if len(tables) != 61 {
+	// Newly added tables must pass the same outsider and tenant-substitution probes.
+	if len(tables) != 62 {
 		t.Fatalf("tenant inventory changed: got %d; audit all new tables", len(tables))
 	}
-	expectedInstagram := map[string]bool{"instagram_connections": false, "instagram_oauth_states": false}
+	// The general regression keeps conversational routing disabled to preserve its
+	// baseline. Seed one bound context so every negative probe operates on a row.
+	execTag, err := admin.Exec(ctx, `INSERT INTO platform.conversation_routes(organization_id,conversation_id,customer_id,channel)
+	 SELECT organization_id,id,customer_id,channel FROM platform.conversations
+	 WHERE organization_id<>$1 AND channel IN ('telegram','whatsapp','instagram')
+	 ORDER BY created_at,id LIMIT 1 ON CONFLICT DO NOTHING`, outsider.OrganizationID)
+	if err != nil || execTag.RowsAffected() != 1 {
+		t.Fatalf("conversation routing RLS fixture: %v", err)
+	}
+	expectedTenantTables := map[string]bool{"instagram_connections": false, "instagram_oauth_states": false, "conversation_routes": false}
 	for _, v := range tables {
-		if _, exists := expectedInstagram[v.name]; exists {
-			expectedInstagram[v.name] = true
+		if _, exists := expectedTenantTables[v.name]; exists {
+			expectedTenantTables[v.name] = true
 		}
 		t.Run("RLS_"+v.name, func(t *testing.T) {
 			if !v.rls || !v.force || v.owner != "aba_migrator" {
@@ -467,9 +475,9 @@ func testAuditRLS(t *testing.T, d *db.Database, admin *pgx.Conn, ctx context.Con
 			}
 		})
 	}
-	for name, present := range expectedInstagram {
+	for name, present := range expectedTenantTables {
 		if !present {
-			t.Errorf("migration 00017 tenant table missing from audit: %s", name)
+			t.Errorf("required tenant table missing from audit: %s", name)
 		}
 	}
 

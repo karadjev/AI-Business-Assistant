@@ -21,16 +21,18 @@ import (
 )
 
 type Service struct {
-	Pool     *pgxpool.Pool
-	Log      *slog.Logger
-	Config   config.Agent
-	Provider agent.Provider
+	Pool              *pgxpool.Pool
+	Log               *slog.Logger
+	Config            config.Agent
+	Provider          agent.Provider
+	RoutingWorkerHash []byte
 }
 type SendInput struct {
 	Text            string          `json:"text"`
 	Role            string          `json:"role"`
 	IdempotencyKey  string          `json:"idempotency_key"`
 	ChannelMetadata json.RawMessage `json:"-"`
+	RouteInbound    bool            `json:"-"`
 }
 
 func (s Service) begin(ctx context.Context, t catalog.Tenant) (pgx.Tx, error) {
@@ -292,7 +294,17 @@ func (s Service) Send(ctx context.Context, t catalog.Tenant, id string, in SendI
 	}
 	runID := auth.UUID()
 	bookingPreference := t.ChannelCapability != "" && (in.Text == "booking_updates:on" || in.Text == "booking_updates:off")
-	auto := mode == "agent" && in.Role == "customer" && !bookingPreference
+	routedInbound := len(s.RoutingWorkerHash) == 32 && t.ChannelCapability != "" && in.RouteInbound &&
+		in.Role == "customer" && !bookingPreference
+	if routedInbound && mode == "agent" {
+		// The stored message and its durable task commit together. The database
+		// independently verifies the inbox capability, customer and policy.
+		if _, e = tx.Exec(ctx, `SELECT platform.conversation_route_submit($1,$2,$3,$4)`,
+			t.OrganizationID, id, in.IdempotencyKey, s.RoutingWorkerHash); e != nil {
+			return nil, tenancy.Error(e)
+		}
+	}
+	auto := mode == "agent" && in.Role == "customer" && !bookingPreference && !routedInbound
 	var autoEnabled bool
 	if e = tx.QueryRow(ctx, `SELECT coalesce((SELECT auto_enabled FROM platform.ai_settings WHERE organization_id=$1),true)`, t.OrganizationID).Scan(&autoEnabled); e != nil {
 		return nil, tenancy.Error(e)
