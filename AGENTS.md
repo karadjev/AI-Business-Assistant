@@ -30,5 +30,9 @@
 - E01 stays OPEN without causal proof. Never weaken artifact guards or add broad exclusions.
 
 ## Delivery
-- No commit, push, deploy, global changes or live enablement without explicit approval.
+- Run the relevant tests and verification checks at the end of every completed stage.
+- After the checks pass, commit the verified changes for that stage and push the commit to the working branch. If a required check fails or is blocked, resolve it or report the blocker before committing or pushing.
+- Never force-push or rewrite published history.
+- Run a separate pre-merge review before merging a working branch into the main branch.
+- Deployment, global changes, and live enablement require explicit approval.
 - Report changed files, tests, security implications and remaining blockers.
