@@ -1,0 +1,10 @@
+[Unit]
+Description=AI Business Assistant daily staging backup
+
+[Timer]
+OnCalendar=*-*-* 02:30:00 UTC
+Persistent=true
+Unit=aba-backup.service
+
+[Install]
+WantedBy=timers.target
