@@ -27,7 +27,13 @@ func Load(get func(string) string) (Config, error) {
 		return Config{}, err
 	}
 	c := Config{Environment: value(get, "APP_ENV", "development"), HTTPAddr: value(get, "HTTP_ADDR", ":8080"), DatabaseURL: get("DATABASE_URL"), LogLevel: value(get, "LOG_LEVEL", "info")}
-	if c.Environment != "development" && c.Environment != "test" && c.Environment != "production" {
+	switch c.Environment {
+	case "development", "test", "production":
+	case "staging":
+		if err := ValidateStaging(get); err != nil {
+			return Config{}, err
+		}
+	default:
 		return Config{}, errors.New("APP_ENV is invalid")
 	}
 	if _, port, err := net.SplitHostPort(c.HTTPAddr); err != nil || port == "" {
@@ -42,8 +48,8 @@ func Load(get func(string) string) (Config, error) {
 	if u.User.Username() != "aba_app" {
 		return Config{}, errors.New("DATABASE_URL must use aba_app runtime role")
 	}
-	if c.Environment == "production" && u.Query().Get("sslmode") != "verify-full" {
-		return Config{}, errors.New("production DATABASE_URL requires sslmode=verify-full")
+	if requiresTLS(c.Environment) && u.Query().Get("sslmode") != "verify-full" {
+		return Config{}, errors.New("staging and production DATABASE_URL require sslmode=verify-full")
 	}
 	if c.LogLevel != "debug" && c.LogLevel != "info" && c.LogLevel != "warn" && c.LogLevel != "error" {
 		return Config{}, errors.New("LOG_LEVEL is invalid")
@@ -74,6 +80,36 @@ func Load(get func(string) string) (Config, error) {
 	c.DBMaxConnections = int32(n)
 	return c, nil
 }
+func requiresTLS(environment string) bool {
+	return environment == "staging" || environment == "production"
+}
+
+// ValidateStaging requires explicit controls both in the binary and in the image entrypoint.
+func ValidateStaging(get func(string) string) error {
+	for _, control := range [][2]string{
+		{"APP_ENV", "staging"}, {"LLM_PROVIDER", "mock"}, {"TELEGRAM_TRANSPORT", "mock"},
+		{"LLM_ENABLE_LIVE", "false"}, {"LLM_EXTERNAL_REQUESTS_AUTHORIZED", "false"},
+		{"LLM_KILL_SWITCH", "true"}, {"LLM_PLATFORM_BUDGET_MICRORUB", "0"},
+		{"TELEGRAM_EXTERNAL_REQUESTS_AUTHORIZED", "false"}, {"TELEGRAM_SENDING_ENABLED", "false"},
+		{"TELEGRAM_SENDING_KILL_SWITCH", "true"}, {"WHATSAPP_LIVE_ENABLED", "false"},
+		{"WHATSAPP_EXTERNAL_REQUESTS_AUTHORIZED", "false"},
+		{"WHATSAPP_SENDING_KILL_SWITCH", "true"}, {"WHATSAPP_MONETARY_BUDGET_RUB", "0"},
+		{"INSTAGRAM_ENABLED", "false"}, {"INSTAGRAM_LIVE_ENABLED", "false"},
+		{"INSTAGRAM_EXTERNAL_REQUESTS_AUTHORIZED", "false"}, {"INSTAGRAM_SENDING_KILL_SWITCH", "true"},
+		{"INSTAGRAM_MONETARY_BUDGET_RUB", "0"},
+	} {
+		if get(control[0]) != control[1] {
+			return errors.New("staging requires explicit mock, live, kill-switch and zero-budget controls")
+		}
+	}
+	for _, name := range []string{"LLM_API_KEY", "LLM_BASE_URL", "TELEGRAM_WEBHOOK_BASE_URL", "ABA_INSTAGRAM_OFFLINE_PROVIDER"} {
+		if get(name) != "" {
+			return errors.New("staging cannot load external providers or Instagram test fixtures")
+		}
+	}
+	return nil
+}
+
 func value(get func(string) string, key, fallback string) string {
 	if v := get(key); v != "" {
 		return v

@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+
+	"github.com/karadjev/AI-Business-Assistant/apps/api/internal/config"
 )
 
 var secretKeys = []string{"DATABASE_URL", "MIGRATION_DATABASE_URL", "AUTH_EMAIL_KEY", "CATALOG_RETENTION_KEY", "TELEGRAM_ENCRYPTION_KEY", "WHATSAPP_ENCRYPTION_KEY"}
@@ -21,21 +23,11 @@ func runtimeAdmission(part string, get func(string) string) error {
 	if part != "api" && part != "worker" {
 		return nil
 	}
-	for _, control := range [][2]string{
-		{"APP_ENV", "production"}, {"LLM_PROVIDER", "mock"}, {"TELEGRAM_TRANSPORT", "mock"},
-		{"LLM_ENABLE_LIVE", "false"}, {"LLM_EXTERNAL_REQUESTS_AUTHORIZED", "false"},
-		{"LLM_KILL_SWITCH", "true"}, {"LLM_PLATFORM_BUDGET_MICRORUB", "0"},
-		{"TELEGRAM_EXTERNAL_REQUESTS_AUTHORIZED", "false"}, {"TELEGRAM_SENDING_ENABLED", "false"},
-		{"TELEGRAM_SENDING_KILL_SWITCH", "true"}, {"WHATSAPP_LIVE_ENABLED", "false"},
-		{"WHATSAPP_EXTERNAL_REQUESTS_AUTHORIZED", "false"},
-		{"WHATSAPP_SENDING_KILL_SWITCH", "true"}, {"WHATSAPP_MONETARY_BUDGET_RUB", "0"},
-	} {
-		if get(control[0]) != control[1] {
-			return errors.New("private runtime security configuration required")
-		}
+	if err := config.ValidateStaging(get); err != nil {
+		return err
 	}
 	origin, err := url.Parse(get("PUBLIC_ORIGIN"))
-	if err != nil || origin.Scheme != "https" || origin.Hostname() == "" || origin.User != nil || origin.RawQuery != "" || origin.Fragment != "" || (origin.Path != "" && origin.Path != "/") {
+	if err != nil || origin.Scheme != "https" || origin.Hostname() == "" || origin.User != nil || origin.RawQuery != "" || origin.Fragment != "" || origin.Path != "" {
 		return errors.New("private runtime HTTPS origin required")
 	}
 	return nil

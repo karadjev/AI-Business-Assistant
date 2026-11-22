@@ -15,7 +15,12 @@ type Agent struct {
 }
 
 func LoadAgent(get func(string) string) (Agent, error) {
-	c := Agent{Provider: value(get, "LLM_PROVIDER", "mock"), Model: get("LLM_MODEL"), Key: get("LLM_API_KEY")}
+	production := get("APP_ENV") == "production"
+	defaultProvider := "mock"
+	if production {
+		defaultProvider = "disabled"
+	}
+	c := Agent{Provider: value(get, "LLM_PROVIDER", defaultProvider), Model: get("LLM_MODEL"), Key: get("LLM_API_KEY")}
 	var e error
 	c.Live, e = LoadLive(get)
 	if e != nil {
@@ -26,10 +31,16 @@ func LoadAgent(get func(string) string) (Agent, error) {
 		return c, errors.New("LLM_ENABLE_LIVE invalid")
 	}
 	c.LiveEnabled = enabled
-	if c.Provider != "mock" && c.Provider != "openai_compatible" {
+	if c.Provider != "mock" && c.Provider != "openai_compatible" && c.Provider != "disabled" {
 		return c, errors.New("LLM_PROVIDER invalid")
 	}
-	if c.Provider != "mock" && (!enabled || c.Model == "" || c.Key == "" || !c.Live.Ready()) {
+	if production && c.Provider == "mock" {
+		return c, errors.New("mock LLM is prohibited in production")
+	}
+	if c.Provider == "disabled" && (enabled || c.Key != "" || c.Live.ExternalAuthorized) {
+		return c, errors.New("disabled LLM cannot load live credentials or authorization")
+	}
+	if c.Provider == "openai_compatible" && (!enabled || c.Model == "" || c.Key == "" || !c.Live.Ready()) {
 		return c, errors.New("live LLM requires explicit opt-in, model and key")
 	}
 	if c.Provider == "mock" {

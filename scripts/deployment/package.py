@@ -12,11 +12,15 @@ import subprocess
 
 REPO = Path(__file__).resolve().parents[2]
 FILES = REPO / 'infrastructure/deployment'
-NODE = 'mcr.microsoft.com/playwright:v1.64.0-noble'
-BASES = {'postgres': 'postgres:18.3-alpine3.23', 'proxy': 'nginx:1.27.3-alpine', 'mailpit': 'axllent/mailpit:v1.21'}
+NODE = 'mcr.microsoft.com/playwright:v1.64.0-noble@sha256:06a9939e57531807f8d5fd76ce44b53165ffb7d7501d87ab10e285c20b1e971f'
+BASES = {
+    'postgres': 'postgres:18.7-alpine@sha256:0115267ab5a509022df9319c77be365cef335adb71556c75f60f5360ee247e71',
+    'proxy': 'nginx:1.30.7-alpine@sha256:caf4e1e032a20f9c3c5e28fc7f25ffd768ad8677b4975c54193075997b3a97e3',
+    'mailpit': 'axllent/mailpit:v1.34.0@sha256:23a2ef85bc50853ab3093645d1d64679afd8887e89da5e48a88940c172591a4e',
+}
 REQUIRED_GO_VERSION = 'go1.26.11'
-# This cached image only reads build metadata; it never compiles release inputs.
-GO_INSPECTOR = 'sha256:f85330846cde1e57ca9ec309382da3b8e6ae3ab943d2739500e08c86393a21b1'
+# The pinned official image also used by the source Dockerfile reads build metadata.
+GO_INSPECTOR = 'sha256:23f198931d4bd83b4f5a613bd75656257ae8bf832dcbc2db80e1050b5219ca2a'
 GO_PARTS = ('api', 'worker', 'migrate', 'healthcheck', 'runtime-entrypoint')
 
 def run(args, **kwargs):
@@ -140,8 +144,8 @@ fs.cpSync('/input','/output/web',{recursive:true,filter:f=>{
                 hashes[str(file.relative_to(a.output))] = hashlib.sha256(file.read_bytes()).hexdigest()
     proof = json.loads((context / 'web' / 'web' / '.next' / 'aba-build-proof.json').read_text())
     manifest = {'schema': 1, 'release': a.release, 'platform': 'linux/amd64', 'images': images,
-                'web_proof': proof, 'files': hashes, 'database_schema': 16,
-                'runtime_security_admission_version': 1,
+                'web_proof': proof, 'files': hashes, 'database_schema': 29,
+                'runtime_security_admission_version': 2,
                 'status': 'PACKAGE_ONLY_NOT_DEPLOYMENT_GO', 'security': 'CONDITIONAL', 'e01': 'OPEN'}
     (a.output / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     (a.output / 'images.env').write_text('\n'.join('ABA_' + k.upper() + '_IMAGE=' + v for k, v in images.items()) + '\n')

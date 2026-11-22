@@ -13,7 +13,7 @@ class PrivateAdmissionTest(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.image = 'sha256:' + 'a' * 64
         self.roles = {'api':'api','worker':'api','migrate':'api','web':'web','postgres':'postgres','proxy':'proxy','mailpit':'mailpit'}
-        self.manifest = {'schema':1,'platform':'linux/amd64','runtime_security_admission_version':1,'files':{},'images':{v:self.image for v in self.roles.values()}}
+        self.manifest = {'schema':1,'platform':'linux/amd64','runtime_security_admission_version':2,'files':{},'images':{v:self.image for v in self.roles.values()}}
         (self.root/'manifest.json').write_text(json.dumps(self.manifest))
         self.cfg = {'networks':{'private':{'internal':True}},'services':{k:{'image':self.image,'pull_policy':'never'} for k in self.roles}}
         for service in ('api','worker'):
@@ -21,7 +21,7 @@ class PrivateAdmissionTest(unittest.TestCase):
         self.cfg['services']['migrate']['command']=['migrate','up']
         for service in ('api','worker'):
             self.cfg['services'][service]['environment'] = {
-                'APP_ENV':'production','PUBLIC_ORIGIN':'https://staging.invalid:8443',
+                'APP_ENV':'staging','PUBLIC_ORIGIN':'https://staging.invalid:8443',
                 'LLM_PROVIDER':'mock','TELEGRAM_TRANSPORT':'mock',
                 'LLM_ENABLE_LIVE':'false','LLM_EXTERNAL_REQUESTS_AUTHORIZED':'false',
                 'LLM_KILL_SWITCH':'true','LLM_PLATFORM_BUDGET_MICRORUB':'0',
@@ -29,6 +29,8 @@ class PrivateAdmissionTest(unittest.TestCase):
                 'TELEGRAM_SENDING_KILL_SWITCH':'true','WHATSAPP_LIVE_ENABLED':'false',
                 'WHATSAPP_EXTERNAL_REQUESTS_AUTHORIZED':'false',
                 'WHATSAPP_SENDING_KILL_SWITCH':'true','WHATSAPP_MONETARY_BUDGET_RUB':'0',
+                'INSTAGRAM_ENABLED':'false','INSTAGRAM_LIVE_ENABLED':'false','INSTAGRAM_EXTERNAL_REQUESTS_AUTHORIZED':'false',
+                'INSTAGRAM_SENDING_KILL_SWITCH':'true','INSTAGRAM_MONETARY_BUDGET_RUB':'0',
             }
     def check(self, cfg, docker_env=None, endpoint='unix:///synthetic/local.sock'):
         def reply(args):
@@ -41,7 +43,7 @@ class PrivateAdmissionTest(unittest.TestCase):
     def test_private_valid(self):
         self.check(self.cfg)
     def test_legacy_or_invalid_runtime_admission_rejected(self):
-        for version in (None,0,'1',True,2):
+        for version in (None,0,1,'2',True,3):
             with self.subTest(version=version):
                 self.manifest['runtime_security_admission_version']=version
                 (self.root/'manifest.json').write_text(json.dumps(self.manifest))
@@ -61,6 +63,8 @@ class PrivateAdmissionTest(unittest.TestCase):
             'TELEGRAM_SENDING_KILL_SWITCH','WHATSAPP_LIVE_ENABLED',
             'WHATSAPP_EXTERNAL_REQUESTS_AUTHORIZED',
             'WHATSAPP_SENDING_KILL_SWITCH','WHATSAPP_MONETARY_BUDGET_RUB',
+            'INSTAGRAM_ENABLED','INSTAGRAM_LIVE_ENABLED','INSTAGRAM_EXTERNAL_REQUESTS_AUTHORIZED',
+            'INSTAGRAM_SENDING_KILL_SWITCH','INSTAGRAM_MONETARY_BUDGET_RUB',
         )
         for service in ('api','worker'):
             for key in required:
@@ -79,7 +83,7 @@ class PrivateAdmissionTest(unittest.TestCase):
             with self.subTest(key=key):
                 cfg=copy.deepcopy(self.cfg);cfg['services']['api'][key]=value
                 with self.assertRaises(ValueError):self.check(cfg)
-        for key,value in [('LLM_ENABLE_LIVE','true'),('WHATSAPP_MONETARY_BUDGET_RUB','1'),('TELEGRAM_SENDING_KILL_SWITCH','false'),('DATABASE_URL','synthetic-inline'),('APP_ENV','development'),('PUBLIC_ORIGIN','http://staging.invalid')]:
+        for key,value in [('LLM_ENABLE_LIVE','true'),('WHATSAPP_MONETARY_BUDGET_RUB','1'),('TELEGRAM_SENDING_KILL_SWITCH','false'),('DATABASE_URL','synthetic-inline'),('APP_ENV','test'),('APP_ENV','production'),('INSTAGRAM_ENABLED','true'),('PUBLIC_ORIGIN','http://staging.invalid')]:
             with self.subTest(flag=key):
                 cfg=copy.deepcopy(self.cfg);cfg['services']['api']['environment'][key]=value
                 with self.assertRaises(ValueError):self.check(cfg)

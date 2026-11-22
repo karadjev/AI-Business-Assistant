@@ -119,11 +119,19 @@ class DeploymentTest(unittest.TestCase):
             with patch('deploy.invoke',return_value=json.dumps(bad)):
                 with self.assertRaises(ValueError):deploy.containers(['compose'])
     def test_database_rls_and_runtime_role_fail_closed(self):
-        valid={'schema':16,'forced':45,'unforced':0,'restricted':True}
-        for change in ({'schema':15},{'forced':44},{'unforced':1},{'restricted':False}):
-            row={**valid,**change}
-            with patch('deploy.invoke',return_value=json.dumps(row)+'\n'+json.dumps({'anonymous_organizations':0})):
-                with self.assertRaises(ValueError):deploy.database(['compose'],16)
+        anonymous = {'anonymous_organizations': 0}
+        for schema, forced in ((16, 45), (29, 62)):
+            valid = {'schema': schema, 'forced': forced, 'unforced': 0, 'restricted': True}
+            with patch('deploy.invoke', return_value=json.dumps(valid) + '\n' + json.dumps(anonymous)):
+                self.assertEqual(deploy.database(['compose'], schema), [valid, anonymous])
+            for change in ({'schema': schema - 1}, {'forced': forced - 1}, {'unforced': 1}, {'restricted': False}):
+                bad = {**valid, **change}
+                with patch('deploy.invoke', return_value=json.dumps(bad) + '\n' + json.dumps(anonymous)):
+                    with self.assertRaises(ValueError):
+                        deploy.database(['compose'], schema)
+        with patch('deploy.invoke') as invoke, self.assertRaises(ValueError):
+            deploy.database(['compose'], 30)
+        invoke.assert_not_called()
     def test_mailpit_unhealthy_refused_and_internal_expose_allowed(self):
         rows=[{'Service':s,'State':'running','Health':'healthy','Publishers':[]} for s in deploy.SERVICES]
         rows[0]['Publishers']=[{'TargetPort':5432,'PublishedPort':0}]

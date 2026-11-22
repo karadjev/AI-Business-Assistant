@@ -72,14 +72,17 @@ func TestSecretConflictAndMountBoundary(t *testing.T) {
 
 func TestPrivateRuntimeSecurityAdmission(t *testing.T) {
 	safe := map[string]string{
-		"APP_ENV": "production", "LLM_PROVIDER": "mock", "TELEGRAM_TRANSPORT": "mock",
+		"APP_ENV": "staging", "LLM_PROVIDER": "mock", "TELEGRAM_TRANSPORT": "mock",
 		"LLM_ENABLE_LIVE": "false", "LLM_EXTERNAL_REQUESTS_AUTHORIZED": "false",
 		"LLM_KILL_SWITCH": "true", "LLM_PLATFORM_BUDGET_MICRORUB": "0",
 		"TELEGRAM_EXTERNAL_REQUESTS_AUTHORIZED": "false", "TELEGRAM_SENDING_ENABLED": "false",
 		"TELEGRAM_SENDING_KILL_SWITCH": "true", "WHATSAPP_LIVE_ENABLED": "false",
 		"WHATSAPP_EXTERNAL_REQUESTS_AUTHORIZED": "false",
 		"WHATSAPP_SENDING_KILL_SWITCH":          "true", "WHATSAPP_MONETARY_BUDGET_RUB": "0",
-		"PUBLIC_ORIGIN": "https://staging.invalid:8443",
+		"PUBLIC_ORIGIN":     "https://staging.invalid:8443",
+		"INSTAGRAM_ENABLED": "false", "INSTAGRAM_LIVE_ENABLED": "false",
+		"INSTAGRAM_EXTERNAL_REQUESTS_AUTHORIZED": "false", "INSTAGRAM_SENDING_KILL_SWITCH": "true",
+		"INSTAGRAM_MONETARY_BUDGET_RUB": "0",
 	}
 	for _, part := range []string{"api", "worker"} {
 		t.Run(part, func(t *testing.T) {
@@ -99,7 +102,7 @@ func TestPrivateRuntimeSecurityAdmission(t *testing.T) {
 					}
 				})
 				t.Run("unsafe_"+key, func(t *testing.T) {
-					wrong := map[string]string{"production": "development", "mock": "live", "false": "true", "true": "false", "0": "1"}[expected]
+					wrong := map[string]string{"staging": "test", "mock": "live", "false": "true", "true": "false", "0": "1"}[expected]
 					if key == "PUBLIC_ORIGIN" {
 						wrong = "http://staging.invalid"
 					}

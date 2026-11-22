@@ -62,8 +62,8 @@ func execute() error {
 	tg := telegram.Service{Log: log, Pool: database.Pool, Config: tc, Transport: telegram.NewTransport(tc), Chat: &conversations.Service{Pool: database.Pool, Config: agentConfig, Provider: agent.NewProvider(agentConfig), Log: log}}
 	agents := agentruntime.Service{Pool: database.Pool, Key: ac.RetentionKey()}
 	if os.Getenv("CONVERSATIONAL_ORCHESTRATION_ENABLED") == "true" {
-		if cfg.Environment != "test" || agentConfig.Provider != "mock" || len(agents.Key) != 32 {
-			log.Error("conversational_orchestration_requires_offline_test_configuration")
+		if (cfg.Environment != "test" && cfg.Environment != "staging") || agentConfig.Provider != "mock" || len(agents.Key) != 32 {
+			log.Error("conversational_orchestration_requires_offline_configuration")
 			return errors.New("invalid conversational orchestration configuration")
 		}
 		proofHash := sha256.Sum256(agents.Proof())

@@ -143,7 +143,7 @@ func (s Service) State(ctx context.Context, t catalog.Tenant) (json.RawMessage, 
 	state["settings"] = c
 	state["mode"] = s.Config.Provider
 	state["model"] = s.Config.Model
-	state["provider_selected"] = s.Config.Provider != "mock"
+	state["provider_selected"] = s.Config.Provider == "openai_compatible"
 	state["live_config_ready"] = s.Config.LiveEnabled && s.Config.Live.Ready()
 	state["currency"] = "RUB"
 	state["cost_unit"] = "microRUB"

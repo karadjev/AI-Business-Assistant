@@ -19,6 +19,7 @@ sys.dont_write_bytecode = True
 from common import command, validate
 
 SERVICES = ('postgres', 'mailpit', 'api', 'worker', 'web', 'proxy')
+EXPECTED_FORCED_RLS_TABLES = {16: 45, 29: 62}
 HERE = Path(__file__).resolve().parent
 
 def digest(path):
@@ -100,6 +101,7 @@ def resource_storage(a, info):
 def check_secrets(cfg, local_qa):
     private_keys = {'database_url':10001, 'migration_database_url':10001,
                     'auth_email_key':10001, 'retention_key':10001,
+                    'telegram_key':10001, 'whatsapp_key':10001,
                     'admin_password':70, 'app_password':70, 'migrator_password':70,
                     'db_key':70, 'proxy_key':101}
     expected = set(private_keys) | {'db_ca','db_certificate','proxy_certificate'}
@@ -120,10 +122,11 @@ def check_secrets(cfg, local_qa):
             raise ValueError('database passwords require independent random hex values')
     if len({values[name].strip() for name in ('admin_password','app_password','migrator_password')}) != 3:
         raise ValueError('database role credentials must differ')
-    for name in ('auth_email_key', 'retention_key'):
+    encryption_keys = ('auth_email_key', 'retention_key', 'telegram_key', 'whatsapp_key')
+    for name in encryption_keys:
         if not re.fullmatch(rb'[0-9a-fA-F]{64}\n?', values[name]):
             raise ValueError('encryption key format invalid')
-    if values['auth_email_key'].strip() == values['retention_key'].strip():
+    if len({bytes.fromhex(values[name].decode().strip()) for name in encryption_keys}) != len(encryption_keys):
         raise ValueError('encryption keys must differ')
     for name, role in (('database_url','aba_app'),('migration_database_url','aba_migrator')):
         u = urlparse(values[name].decode().strip())
@@ -168,6 +171,9 @@ def containers(base):
     return found
 
 def database(base, schema):
+    expected_forced = EXPECTED_FORCED_RLS_TABLES.get(schema)
+    if expected_forced is None:
+        raise ValueError('database schema has no reviewed FORCE RLS count')
     sql = """SELECT json_build_object(
  'schema',(SELECT version FROM platform.service_metadata WHERE singleton),
  'forced',(SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='platform' AND c.relrowsecurity AND c.relforcerowsecurity),
@@ -181,7 +187,9 @@ SELECT json_build_object('anonymous_organizations',count(*)) FROM platform.organ
 ROLLBACK;"""
     raw = invoke(base + ['exec','-T','postgres','psql','-X','-qAt','-U','postgres','-d','aba_stage','-v','ON_ERROR_STOP=1'], data=sql)
     rows = [json.loads(line) for line in raw.splitlines() if line.startswith('{')]
-    if len(rows) != 2 or rows[0].get('schema') != schema or rows[0].get('forced') != 45 or rows[0].get('unforced') != 0 or rows[0].get('restricted') is not True or rows[1].get('anonymous_organizations') != 0:
+    if (len(rows) != 2 or rows[0].get('schema') != schema or rows[0].get('forced') != expected_forced
+            or rows[0].get('unforced') != 0 or rows[0].get('restricted') is not True
+            or rows[1].get('anonymous_organizations') != 0):
         raise ValueError('database schema, FORCE RLS or runtime role check failed')
     return rows
 

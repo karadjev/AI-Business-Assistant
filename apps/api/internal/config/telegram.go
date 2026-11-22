@@ -21,9 +21,16 @@ type Telegram struct {
 }
 
 func LoadTelegram(get func(string) string, environment string) (Telegram, error) {
-	c := Telegram{Mode: value(get, "TELEGRAM_TRANSPORT", "mock"), Retention: 7 * 24 * time.Hour}
-	if c.Mode != "mock" && c.Mode != "live" {
+	defaultMode := "mock"
+	if environment == "production" {
+		defaultMode = "disabled"
+	}
+	c := Telegram{Mode: value(get, "TELEGRAM_TRANSPORT", defaultMode), Retention: 7 * 24 * time.Hour}
+	if c.Mode != "mock" && c.Mode != "live" && c.Mode != "disabled" {
 		return c, errors.New("invalid Telegram transport")
+	}
+	if environment == "production" && c.Mode == "mock" {
+		return c, errors.New("mock Telegram is prohibited in production")
 	}
 	var err error
 	c.ExternalAuthorized, err = strconv.ParseBool(value(get, "TELEGRAM_EXTERNAL_REQUESTS_AUTHORIZED", "false"))
@@ -80,6 +87,9 @@ func LoadTelegram(get func(string) string, environment string) (Telegram, error)
 	}
 	if c.Mode == "live" && !c.Enabled {
 		return c, errors.New("live Telegram requires encryption key")
+	}
+	if c.Mode == "disabled" && (c.Enabled || c.ExternalAuthorized || c.SendingEnabled) {
+		return c, errors.New("disabled Telegram cannot load credentials or sending authorization")
 	}
 	return c, nil
 }

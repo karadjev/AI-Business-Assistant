@@ -21,10 +21,12 @@ x-runtime: &runtime
   mem_limit: 512m
   pids_limit: 128
   environment: &runtime-env
-    APP_ENV: production
+    APP_ENV: staging
     DATABASE_URL_FILE: /run/secrets/database_url
     AUTH_EMAIL_KEY_FILE: /run/secrets/auth_email_key
     CATALOG_RETENTION_KEY_FILE: /run/secrets/retention_key
+    TELEGRAM_ENCRYPTION_KEY_FILE: /run/secrets/telegram_key
+    WHATSAPP_ENCRYPTION_KEY_FILE: /run/secrets/whatsapp_key
     PUBLIC_ORIGIN: ${ABA_PUBLIC_ORIGIN:?Set HTTPS origin}
     SMTP_ADDR: mailpit:1025
     DB_MAX_CONNECTIONS: '5'
@@ -41,7 +43,12 @@ x-runtime: &runtime
     WHATSAPP_SENDING_KILL_SWITCH: 'true'
     WHATSAPP_EXTERNAL_REQUESTS_AUTHORIZED: 'false'
     WHATSAPP_MONETARY_BUDGET_RUB: '0'
-  secrets: [database_url, auth_email_key, retention_key, db_ca]
+    INSTAGRAM_ENABLED: 'false'
+    INSTAGRAM_LIVE_ENABLED: 'false'
+    INSTAGRAM_EXTERNAL_REQUESTS_AUTHORIZED: 'false'
+    INSTAGRAM_SENDING_KILL_SWITCH: 'true'
+    INSTAGRAM_MONETARY_BUDGET_RUB: '0'
+  secrets: [database_url, auth_email_key, retention_key, telegram_key, whatsapp_key, db_ca]
 services:
   postgres:
     image: ${ABA_POSTGRES_IMAGE:?Set reviewed PostgreSQL image}
@@ -94,6 +101,9 @@ services:
   worker:
     <<: *runtime
     command: [worker]
+    environment:
+      <<: *runtime-env
+      CONVERSATIONAL_ORCHESTRATION_ENABLED: 'true'
     depends_on:
       api: {condition: service_healthy}
     healthcheck:
@@ -141,7 +151,9 @@ services:
     secrets: [proxy_certificate, proxy_key]
     depends_on:
       web: {condition: service_healthy}
-    networks: [private]
+    networks:
+      private:
+        ipv4_address: ${ABA_PROXY_ADDRESS:?Set internal proxy address in the reviewed subnet}
     restart: unless-stopped
     stop_grace_period: 30s
     cpus: 0.25
@@ -182,6 +194,8 @@ secrets:
   migration_database_url: {file: '${ABA_SECRETS_DIR:?}/migration_database_url'}
   auth_email_key: {file: '${ABA_SECRETS_DIR:?}/auth_email_key'}
   retention_key: {file: '${ABA_SECRETS_DIR:?}/retention_key'}
+  telegram_key: {file: '${ABA_SECRETS_DIR:?}/telegram_key'}
+  whatsapp_key: {file: '${ABA_SECRETS_DIR:?}/whatsapp_key'}
   admin_password: {file: '${ABA_SECRETS_DIR:?}/admin_password'}
   app_password: {file: '${ABA_SECRETS_DIR:?}/app_password'}
   migrator_password: {file: '${ABA_SECRETS_DIR:?}/migrator_password'}

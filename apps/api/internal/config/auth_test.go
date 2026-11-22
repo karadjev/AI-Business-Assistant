@@ -16,6 +16,14 @@ func TestAuthConfiguration(t *testing.T) {
 	if e != nil || !c.Secure {
 		t.Fatal("production cookies")
 	}
+	c, e = LoadAuth(lookup(v), "staging")
+	if e != nil || !c.Secure {
+		t.Fatal("staging cookies must be secure")
+	}
+	v["PUBLIC_ORIGIN"] = "http://example.test"
+	if _, e = LoadAuth(lookup(v), "staging"); e == nil {
+		t.Fatal("staging accepted insecure origin")
+	}
 	for _, key := range []string{"AUTH_EMAIL_KEY", "PUBLIC_ORIGIN", "SMTP_ADDR", "SESSION_TTL"} {
 		bad := map[string]string{"AUTH_EMAIL_KEY": strings.Repeat("01", 32)}
 		bad[key] = "invalid-secret"

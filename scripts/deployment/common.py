@@ -28,8 +28,8 @@ def validate(release, env, project):
     if manifest.get('schema') != 1 or manifest.get('platform') != 'linux/amd64':
         raise ValueError('unsupported release manifest')
     admission = manifest.get('runtime_security_admission_version')
-    if type(admission) is not int or admission != 1:
-        raise ValueError('release must preserve verified runtime security admission v1')
+    if type(admission) is not int or admission != 2:
+        raise ValueError('release must preserve verified staging runtime security admission v2')
     if any(p.name == '__pycache__' or p.suffix == '.pyc' for p in (release / 'scripts').rglob('*')):
         raise ValueError('generated Python bytecode in immutable release scripts')
     for name, expected in manifest['files'].items():
@@ -65,8 +65,8 @@ def validate(release, env, project):
         flags = value.get('environment', {})
         if service in ('api', 'worker'):
             origin = urlparse(flags.get('PUBLIC_ORIGIN', ''))
-            if flags.get('APP_ENV') != 'production' or origin.scheme != 'https' or not origin.hostname or origin.username or origin.query or origin.fragment or origin.path not in ('', '/'):
-                raise ValueError('private runtime requires production mode and an HTTPS origin')
+            if flags.get('APP_ENV') != 'staging' or origin.scheme != 'https' or not origin.hostname or origin.username or origin.query or origin.fragment or origin.path:
+                raise ValueError('private runtime requires staging mode and an HTTPS origin')
             if flags.get('LLM_PROVIDER') != 'mock' or flags.get('TELEGRAM_TRANSPORT') != 'mock':
                 raise ValueError('providers must remain mock')
             # Require explicit admission controls even if today's runtime has
@@ -78,19 +78,21 @@ def validate(release, env, project):
                 'TELEGRAM_SENDING_KILL_SWITCH', 'WHATSAPP_LIVE_ENABLED',
                 'WHATSAPP_EXTERNAL_REQUESTS_AUTHORIZED',
                 'WHATSAPP_SENDING_KILL_SWITCH', 'WHATSAPP_MONETARY_BUDGET_RUB',
+                'INSTAGRAM_ENABLED', 'INSTAGRAM_LIVE_ENABLED', 'INSTAGRAM_EXTERNAL_REQUESTS_AUTHORIZED',
+                'INSTAGRAM_SENDING_KILL_SWITCH', 'INSTAGRAM_MONETARY_BUDGET_RUB',
             )
             if any(key not in flags for key in required):
                 raise ValueError('explicit live, kill-switch and zero-budget controls are required')
-        for key in ('DATABASE_URL', 'MIGRATION_DATABASE_URL', 'AUTH_EMAIL_KEY', 'CATALOG_RETENTION_KEY', 'POSTGRES_PASSWORD', 'APP_DB_PASSWORD', 'MIGRATOR_DB_PASSWORD', 'LLM_API_KEY'):
+        for key in ('DATABASE_URL', 'MIGRATION_DATABASE_URL', 'AUTH_EMAIL_KEY', 'CATALOG_RETENTION_KEY', 'POSTGRES_PASSWORD', 'APP_DB_PASSWORD', 'MIGRATOR_DB_PASSWORD', 'LLM_API_KEY', 'TELEGRAM_ENCRYPTION_KEY', 'WHATSAPP_ENCRYPTION_KEY', 'INSTAGRAM_ACCESS_TOKEN', 'INSTAGRAM_APP_SECRET', 'INSTAGRAM_VERIFY_TOKEN', 'INSTAGRAM_ENCRYPTION_KEY', 'ABA_INSTAGRAM_OFFLINE_PROVIDER', 'LLM_BASE_URL', 'TELEGRAM_WEBHOOK_BASE_URL'):
             if flags.get(key):
                 raise ValueError('inline runtime credentials are prohibited')
-        for key in ('LLM_ENABLE_LIVE', 'LLM_EXTERNAL_REQUESTS_AUTHORIZED', 'TELEGRAM_EXTERNAL_REQUESTS_AUTHORIZED', 'TELEGRAM_SENDING_ENABLED', 'WHATSAPP_LIVE_ENABLED', 'WHATSAPP_EXTERNAL_REQUESTS_AUTHORIZED'):
+        for key in ('LLM_ENABLE_LIVE', 'LLM_EXTERNAL_REQUESTS_AUTHORIZED', 'TELEGRAM_EXTERNAL_REQUESTS_AUTHORIZED', 'TELEGRAM_SENDING_ENABLED', 'WHATSAPP_LIVE_ENABLED', 'WHATSAPP_EXTERNAL_REQUESTS_AUTHORIZED', 'INSTAGRAM_ENABLED', 'INSTAGRAM_LIVE_ENABLED', 'INSTAGRAM_EXTERNAL_REQUESTS_AUTHORIZED'):
             if key in flags and flags[key] != 'false':
                 raise ValueError('live authorization must remain off')
-        for key in ('LLM_KILL_SWITCH', 'TELEGRAM_SENDING_KILL_SWITCH', 'WHATSAPP_SENDING_KILL_SWITCH'):
+        for key in ('LLM_KILL_SWITCH', 'TELEGRAM_SENDING_KILL_SWITCH', 'WHATSAPP_SENDING_KILL_SWITCH', 'INSTAGRAM_SENDING_KILL_SWITCH'):
             if key in flags and flags[key] != 'true':
                 raise ValueError('sending kill switch must remain on')
-        for key in ('LLM_PLATFORM_BUDGET_MICRORUB', 'WHATSAPP_MONETARY_BUDGET_RUB'):
+        for key in ('LLM_PLATFORM_BUDGET_MICRORUB', 'WHATSAPP_MONETARY_BUDGET_RUB', 'INSTAGRAM_MONETARY_BUDGET_RUB'):
             if key in flags and flags[key] != '0':
                 raise ValueError('external budgets must remain zero')
     for ref in manifest['images'].values():

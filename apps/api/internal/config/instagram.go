@@ -42,8 +42,8 @@ func LoadInstagram(get func(string) string, environment string) (Instagram, erro
 		}
 		return c, nil
 	}
-	if environment == "production" {
-		return c, errors.New("Instagram production runtime is not authorized")
+	if requiresTLS(environment) {
+		return c, errors.New("Instagram mock runtime is restricted to isolated development and testing")
 	}
 	key, err := hex.DecodeString(get("INSTAGRAM_ENCRYPTION_KEY"))
 	secret, verify := get("INSTAGRAM_APP_SECRET"), get("INSTAGRAM_VERIFY_TOKEN")
