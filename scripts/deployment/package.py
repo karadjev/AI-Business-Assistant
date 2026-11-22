@@ -35,6 +35,8 @@ def image(ref):
 def static_binary(path):
     if path.is_symlink() or not path.is_file():
         raise ValueError('binary must be a regular file')
+    if path.stat().st_mode & 0o111 == 0:
+        raise ValueError('binary must be executable by the non-root runtime user')
     b = path.read_bytes()
     if len(b) < 64 or b[:6] != b'\x7fELF\x02\x01' or struct.unpack_from('<H', b, 18)[0] != 62:
         raise ValueError('expected linux/amd64 ELF64 binary')

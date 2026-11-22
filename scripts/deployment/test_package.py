@@ -1,4 +1,7 @@
 import unittest
+from pathlib import Path
+import struct
+import tempfile
 
 import package
 
@@ -31,6 +34,20 @@ class CompilerAdmissionTests(unittest.TestCase):
             with self.subTest(version=version):
                 with self.assertRaises(ValueError):
                     package.parse_go_versions(self.metadata({'api': version}))
+
+    def test_go_runtime_artifact_requires_execute_permission(self):
+        with tempfile.TemporaryDirectory() as directory:
+            binary = Path(directory) / 'runtime-entrypoint'
+            data = bytearray(64)
+            data[:6] = b'\x7fELF\x02\x01'
+            struct.pack_into('<H', data, 18, 62)
+            struct.pack_into('<H', data, 54, 4)
+            binary.write_bytes(data)
+            binary.chmod(0o444)
+            with self.assertRaisesRegex(ValueError, 'binary must be executable'):
+                package.static_binary(binary)
+            binary.chmod(0o555)
+            package.static_binary(binary)
 
 
 if __name__ == '__main__':
