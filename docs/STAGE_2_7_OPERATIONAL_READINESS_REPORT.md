@@ -33,7 +33,7 @@
 4. Compare schema version, FORCE RLS/policies, app-role restrictions, organization count, task/audit/approval fingerprints and anonymous-RLS probe.
 5. Preserve rehearsal evidence and leave the active restore volume intact for review. Do not delete backup or volume as part of this procedure.
 
-The Stage 2.7 rehearsal used an isolated project `aba-private-restore-stage27`; restore evidence reported schema 29, 62 FORCE RLS tables, restricted `aba_app`, 9 organizations, 19 completed tasks, 7 completed agent IDs, 104 audit entries and 3 executed approvals. Restore fingerprints matched the pre-restore snapshot. Main staging then rebooted and preserved its independent active volume.
+The verified archive was 870,836 bytes with SHA-256 `0ae09a6de4781e59f2e083c3eb0dc61728d91119cf7deafa5162ef7264d32957`. The Stage 2.7 rehearsal used an isolated project `aba-private-restore-stage27`; restore evidence reported schema 29, 62 FORCE RLS tables, restricted `aba_app`, 9 organizations, 19 completed tasks, 7 completed agent IDs, 104 audit entries and 3 executed approvals. Restore fingerprints matched the pre-restore snapshot. Main staging then rebooted and preserved its independent active volume.
 
 ## Readiness states
 

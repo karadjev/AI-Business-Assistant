@@ -48,16 +48,16 @@ An authenticated public BFF `PATCH /agent-business-profile` returned 404 while t
 
 Commands were run from clean committed source on the VPS or from the repository worktree. Private raw logs and helper scripts are indexed in `.local/stage-2-7/INDEX.md`.
 
-- `deploy.py diagnose --release ... --env ... --project aba-private-staging ...` — **PASS, exit 0** against approved manifest before reboot.
+- `python3 scripts/deployment/deploy.py diagnose --release /srv/aba/verify-20261122/release-clean --env /srv/aba/staging/environment --project aba-private-staging --storage-root /srv/aba/staging --backup-dir /srv/aba/staging/backups --tls-ca /srv/aba/staging/secrets/db_ca --report /srv/aba/staging/reports/restore-stage27/diagnose.json` — **PASS, exit 0** against approved manifest before reboot.
 - DNS authoritative A checks for `ai-business-store.com` and `api.ai-business-store.com` — final retry **PASS, exit 0**; initial nameserver timeout retained.
 - Public Chromium acceptance — **PASS, exit 0**; actual HTTPS staging flow.
 - Isolated integration runners: DB/migrations, conversational routing, Instagram offline, delegation, service closure, real estate — **PASS, exit 0** each.
 - Industry focused suite baseline — **FAIL, exit 1** at `service_only` because a fixed six-call helper stopped before the parent result; construction passed. State-aware bounded loop remediation — **PASS, exit 0** on fresh isolated DB.
-- Candidate web build `production.sh`, lint, typecheck, OpenAPI and artifact proof — **PASS, exit 0**. Candidate Chromium — **5/5, exit 0**.
+- Candidate `/scripts/build-env/production.sh`, `npm run lint`, `npm run typecheck`, `npm run check:openapi`, artifact proof, then `node /scripts/build-env/browser.sh tests/smoke.spec.ts tests/auth.spec.ts --output=/results/run --reporter=list` — **PASS, exit 0**; Chromium 5/5.
 - `node --test scripts/build-env/artifacts.test.cjs scripts/deployment/smoke.test.cjs` — **4/4 PASS, exit 0**.
-- Fresh backup service — **PASS, exit 0**; separate-volume restore rehearsal — **PASS, exit 0**.
-- Full server reboot — **PASS**: boot ID changed, no manual service start, six healthy containers, data counts and persistent-volume identity preserved.
-- The first public API retry contained wrong JSON (400); subsequent corrected attempt completed all seven agents but did not finish its Business Manager aggregate assertion. A later runner retry encountered intermittent client TLS/mail harness errors and is not counted as acceptance evidence.
+- `systemctl start aba-backup.service` — **PASS, exit 0**; newest archive `20261122T154338-dcd8fb59949d4e8b96d63468d6d28ccf.dump`, 870,836 bytes, SHA-256 `0ae09a6de4781e59f2e083c3eb0dc61728d91119cf7deafa5162ef7264d32957`. `python3 scripts/deployment/backup.py restore-rehearsal --release /srv/aba/verify-20261122/release-clean --env /srv/aba/staging/reports/restore-stage27/restore.env --project aba-private-restore-stage27 --archive /srv/aba/staging/backups/20261122T154338-dcd8fb59949d4e8b96d63468d6d28ccf.dump` — **PASS, exit 0**.
+- Full server reboot — **PASS**: scheduled with `systemd-run --unit=aba-stage27-reboot --on-active=3s /usr/bin/systemctl reboot`; boot ID changed, no manual service start, six healthy containers, data counts and persistent-volume identity preserved.
+- `bash /srv/aba/stage-2-7/industries-fixed.sh industries` — **PASS, exit 0**; baseline run was **FAIL, exit 1**. `go test -tags=integration -count=1 -v -run '^TestDatabaseAndMigrations$' ./tests/integration`, `... -run '^TestConversationalIsolated$' ...`, and the focused offline channel/delegation/closure/estate tests — each **PASS, exit 0** in the pinned Go container with a fresh temporary PostgreSQL. `npm run lint && npm run typecheck` — **PASS, exit 0**. `node --test scripts/build-env/artifacts.test.cjs scripts/deployment/smoke.test.cjs` — **4/4 PASS, exit 0**. The first public API retry contained wrong JSON (400); subsequent corrected attempt completed all seven agents but did not finish its Business Manager aggregate assertion. A later runner retry encountered intermittent client TLS/mail harness errors and is not counted as acceptance evidence.
 
 ## Delivery state
 
