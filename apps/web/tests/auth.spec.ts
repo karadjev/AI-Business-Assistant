@@ -37,6 +37,23 @@ test("регистрация, Mailpit, сессия, организации, XSS
  // Stage 5: sandbox is separate from the ordinary store, and every order is explicit.
  await page.goto(`/dashboard/ai-playground?org=${own}`);await expect(page.getByText(/Тестовый чат и заявки не используют его склад/)).toBeVisible();await page.getByLabel("Название тестового магазина").fill("Изолированный тестовый магазин");await page.getByRole("button",{name:"Создать тестовый магазин",exact:true}).click();await expect(page).toHaveURL(/dashboard\/products\?org=/);
  const sandbox=new URL(page.url()).searchParams.get("org")!;expect(sandbox).not.toBe(own);
+ await page.goto(`/dashboard/ai-settings?org=${sandbox}`);
+ const teamURL=`/api/v1/organizations/${sandbox}/agent-team`;
+ const profileURL=`/api/v1/organizations/${sandbox}/agent-business-profile`;
+ const previous=(await (await page.request.get(teamURL)).json()).profile;
+ const update={model:"trade",industry:"building_materials",revision:previous.revision};
+ expect((await page.request.patch(profileURL,{headers:{Origin:new URL(page.url()).origin},data:update})).status()).toBe(403);
+ await page.getByLabel("Выбор отрасли").selectOption("building_materials");
+ await page.getByRole("button",{name:"Сохранить отрасль",exact:true}).click();
+ await expect(page.getByText("Отрасль сохранена.")).toBeVisible();
+ await expect.poll(async()=>(await (await page.request.get(teamURL)).json()).profile.industry).toBe("building_materials");
+ await page.reload();
+ await expect(page.getByLabel("Выбор отрасли")).toHaveValue("building_materials");
+ const profileCSRF=(await page.context().cookies()).find(c=>c.name==="aba_csrf")?.value??"";
+ expect((await page.request.patch(profileURL,{headers:{Origin:new URL(page.url()).origin,"X-CSRF-Token":profileCSRF},data:update})).status()).toBe(409);
+ await page.getByLabel("Выбор отрасли").selectOption(previous.industry);
+ await page.getByRole("button",{name:"Сохранить отрасль",exact:true}).click();
+ await expect.poll(async()=>(await (await page.request.get(teamURL)).json()).profile.industry).toBe(previous.industry);
  await page.goto(`/dashboard/products/new?org=${sandbox}`);await page.getByLabel("Название",{exact:true}).fill("Синтетический PLAY5");await page.getByLabel("SKU",{exact:true}).fill("PLAY5");await page.getByLabel("Цена, ₽").fill("1000.05");await page.getByRole("button",{name:"Сохранить товар"}).click();await expect(page).toHaveURL(/products\/[0-9a-f-]{36}\?org=/);await page.getByLabel("Новый остаток").fill("3");await page.getByLabel("Причина",{exact:true}).fill("Синтетическая ручная сверка");await page.getByRole("button",{name:"Скорректировать"}).click();await expect(page.getByText(/Доступно 3, резерв 0/)).toBeVisible();await page.getByRole("button",{name:"Опубликовать",exact:true}).click();await expect(page.getByText("Статус: Опубликован",{exact:true})).toBeVisible();const sandboxProductURL=page.url();
  await page.goto(`/dashboard/ai-playground?org=${sandbox}`);await expect(page.getByText("Симуляция · ответы по тестовому каталогу",{exact:true})).toBeVisible();await page.getByRole("button",{name:"Новый тестовый диалог",exact:true}).click();await expect(page).toHaveURL(/chat=/);const chatURL=page.url();await page.getByLabel("Сообщение",{exact:true}).fill("Есть PLAY5?");const sentReply=page.waitForResponse(r=>r.url().includes("/messages")&&r.request().method()==="POST");await page.getByRole("button",{name:"Отправить сообщение",exact:true}).click();const sentResponse=await sentReply;const sentBody=await sentResponse.json();expect(sentResponse.status(),JSON.stringify(sentBody.error??{})).toBe(200);expect(sentBody.control_mode).toBe("agent");expect(sentBody.messages.some((m:{role:string})=>m.role==="assistant")).toBe(true);await expect(page.locator(".chat-history .assistant")).toContainText("MOCK");await expect(page.getByRole("button",{name:"Выбрать PLAY5",exact:true})).toBeVisible();
  const getStock=async()=>{const result=await (await page.request.get(`/api/v1/organizations/${sandbox}/inventory`)).json();return result.items[0];};expect((await getStock()).quantity_reserved).toBe(0);

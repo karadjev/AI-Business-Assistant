@@ -113,15 +113,23 @@ func testStage262ServiceOnly(t *testing.T, d *db.Database, admin *pgx.Conn, ctx 
 		if err != nil {
 			t.Fatal(err)
 		}
-		for i := 0; i < 6; i++ {
+		var status, state string
+		for i := 0; i < 20; i++ {
 			worked, err := svc.ProcessOne(ctx)
-			if !worked || err != nil {
+			if err != nil {
 				t.Fatalf("step %d: %t %v", i, worked, err)
 			}
+			if err := admin.QueryRow(ctx, `SELECT t.status, coalesce((SELECT e.result->0->>'state'
+			 FROM platform.agent_executions e WHERE e.task_id=t.id ORDER BY e.attempt DESC LIMIT 1),'')
+			 FROM platform.agent_tasks t WHERE t.id=$1`, id).Scan(&status, &state); err != nil {
+				t.Fatal(err)
+			}
+			if status == "completed" || status == "failed" || !worked {
+				break
+			}
 		}
-		var state string
-		if err := admin.QueryRow(ctx, `SELECT coalesce(result->0->>'state','') FROM platform.agent_executions WHERE task_id=$1 ORDER BY attempt DESC LIMIT 1`, id).Scan(&state); err != nil || state != want {
-			t.Fatalf("result %q want %q: %v", state, want, err)
+		if status != "completed" || state != want {
+			t.Fatalf("task %s status %q, result %q want %q", id, status, state, want)
 		}
 		return id
 	}

@@ -15,9 +15,21 @@ type Agent = {
 };
 
 type Team = {
-  profile: {model: string; industry: string; capabilities: string[]};
+  profile: {model: string; industry: string; revision: number; capabilities: string[]};
   agents: Agent[];
 };
+
+const industries = [
+  {id: "electronics", model: "trade", label: "Электроника"},
+  {id: "auto_parts", model: "trade", label: "Автозапчасти"},
+  {id: "building_materials", model: "trade", label: "Строительные материалы"},
+  {id: "furniture", model: "trade", label: "Мебель"},
+  {id: "apparel", model: "trade", label: "Одежда"},
+  {id: "vehicle_service", model: "service", label: "Автосервис"},
+  {id: "personal_services", model: "service", label: "Персональные услуги"},
+  {id: "real_estate", model: "agency", label: "Недвижимость"},
+  {id: "mixed_nonfood", model: "hybrid", label: "Смешанный непродовольственный ассортимент"},
+];
 
 type Task = {
   id: string;
@@ -97,10 +109,12 @@ function isAgent(value: unknown): value is Agent {
 function parseTeam(value: unknown): Team {
   if (isObject(value) && isObject(value.profile) && typeof value.profile.model === "string"
     && typeof value.profile.industry === "string" && isTextList(value.profile.capabilities)
+    && typeof value.profile.revision === "number" && Number.isSafeInteger(value.profile.revision) && value.profile.revision > 0
     && Array.isArray(value.agents) && value.agents.every(isAgent)
     && new Set(value.agents.map(agent => agent.id)).size === value.agents.length) {
     return {
-      profile: {model: value.profile.model, industry: value.profile.industry, capabilities: value.profile.capabilities},
+      profile: {model: value.profile.model, industry: value.profile.industry, revision: value.profile.revision,
+        capabilities: value.profile.capabilities},
       agents: value.agents,
     };
   }
@@ -179,6 +193,9 @@ export function AgentTeam({organizationId, timezone, owner, getCsrfToken}: {
   const [selected, setSelected] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submission, setSubmission] = useState<{id: string} | {error: string} | null>(null);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileError, setProfileError] = useState("");
+  const [profileNotice, setProfileNotice] = useState("");
   const inFlight = useRef(false);
   const pendingKeys = useRef(new Map<string, string>());
 
@@ -192,6 +209,40 @@ export function AgentTeam({organizationId, timezone, owner, getCsrfToken}: {
     return name && name !== id ? name : agentNames.get(id) ?? id;
   }
   const refreshActivity = () => setActivityVersion(version => version + 1);
+
+  async function updateProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const profile = team.data?.profile;
+    const choice = new FormData(event.currentTarget).get("industry");
+    const industry = industries.find(item => item.id === choice);
+    if (!owner || !profile || !industry || savingProfile || profile.industry === industry.id) return;
+    const csrf = getCsrfToken();
+    setProfileNotice("");
+    setProfileError("");
+    if (!csrf) {
+      setProfileError("Обновите страницу или войдите снова, чтобы сохранить профиль.");
+      return;
+    }
+    setSavingProfile(true);
+    try {
+      const response = await fetch(`${root}/agent-business-profile`, {
+        method: "PATCH", headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf},
+        body: JSON.stringify({model: industry.model, industry: industry.id, revision: profile.revision}),
+      });
+      if (response.status === 409) {
+        setTeamVersion(version => version + 1);
+        setProfileError("Профиль изменился. Проверьте актуальные данные и повторите выбор.");
+        return;
+      }
+      if (!response.ok) throw new Error("Не удалось сохранить отрасль.");
+      setTeamVersion(version => version + 1);
+      setProfileNotice("Отрасль сохранена.");
+    } catch {
+      setProfileError("Не удалось сохранить отрасль. Повторите попытку.");
+    } finally {
+      setSavingProfile(false);
+    }
+  }
 
   async function createTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -253,6 +304,16 @@ export function AgentTeam({organizationId, timezone, owner, getCsrfToken}: {
         <dt>Отрасль</dt><dd>{team.data.profile.industry || "Не указана"}</dd>
         <dt>Возможности</dt><dd>{team.data.profile.capabilities.join(", ") || "Не указаны"}</dd>
       </dl>
+      <form className="catalog-inline" onSubmit={updateProfile}>
+        <label>Выбор отрасли
+          <Select key={team.data.profile.revision} name="industry" defaultValue={team.data.profile.industry} disabled={savingProfile}>
+            {industries.map(industry => <option key={industry.id} value={industry.id}>{industry.label}</option>)}
+          </Select>
+        </label>
+        <Button type="submit" disabled={savingProfile}>Сохранить отрасль</Button>
+      </form>
+      {profileError && <Alert tone="danger">{profileError}</Alert>}
+      {profileNotice && <p role="status">{profileNotice}</p>}
       {agents.length === 0 ? <p>Агенты не настроены.</p> : <div className="channel-cards">
         {agents.map(agent => <details key={agent.id} className="channel-card" data-testid={`agent-card-${agent.id}`}>
           <summary>{agentName(agent.id)} <StatusBadge tone={agent.enabled ? "positive" : "neutral"}>

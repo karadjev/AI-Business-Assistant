@@ -25,6 +25,7 @@ function catalogMethods(path:string):string[]|undefined{
  if(new RegExp(`^${root}/llm-reservations/[0-9a-f-]{36}/recover$`).test(path))return ["POST"];
  if(new RegExp(`^${root}/ai-settings$`).test(path))return ["GET","PATCH"];
  if(new RegExp(`^${root}/agent-(team|audit)$`).test(path))return ["GET"];
+ if(new RegExp(`^${root}/agent-business-profile$`).test(path))return ["PATCH"];
  if(new RegExp(`^${root}/agent-tasks$`).test(path))return ["GET","POST"];
  if(new RegExp(`^${root}/marketing-drafts$`).test(path))return ["GET"];
  if(new RegExp(`^${root}/marketing-drafts/[0-9a-f-]{36}/review$`).test(path))return ["POST"];
