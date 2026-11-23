@@ -9,6 +9,8 @@ const owner = "11111111-1111-4111-8111-111111111111";
 const member = "22222222-2222-4222-8222-222222222222";
 const approvalId = "33333333-3333-4333-8333-333333333333";
 const secondId = "44444444-4444-4444-8444-444444444444";
+const taskId = "66666666-6666-4666-8666-666666666666";
+const childId = "77777777-7777-4777-8777-777777777777";
 const session = "aba_session=synthetic-session";
 const csrf = "synthetic-csrf";
 const root = (id: string) => `/api/v1/organizations/${id}/agent-approvals`;
@@ -21,6 +23,11 @@ let items: ReturnType<typeof approval>[];
 let decisions: {id: string; body: unknown; csrf: string | undefined; origin: string | undefined}[];
 let releaseDecision: (() => void) | undefined;
 let holdDecision: Promise<void> | undefined;
+let taskRows: ReturnType<typeof task>[];
+let taskStatus: number;
+let profile: {model: string; industry: string; revision: number};
+let holdTeam: Promise<void> | undefined;
+let releaseTeam: (() => void) | undefined;
 
 function approval(id: string, action: string, status = "pending", expiresAt = Date.now() + 600_000) {
   return {
@@ -29,6 +36,12 @@ function approval(id: string, action: string, status = "pending", expiresAt = Da
     parameters: {note: "<script>synthetic</script>"}, parameters_hash: `synthetic-hash-${id}`,
     reason: "Проверка синтетического действия",
   };
+}
+
+function task(id: string, status: string, result: unknown = null, parentId: string | null = null) {
+  return {id, status, result, parent_id: parentId, agent_id: "business_manager", action: "coordinate",
+    created_at: new Date().toISOString(), deadline: new Date(Date.now() + 600000).toISOString(),
+    completed_at: null, error_code: null, retry_count: 0};
 }
 
 async function listen(server: Server) {
@@ -55,6 +68,20 @@ async function handle(request: IncomingMessage, response: ServerResponse) {
     mode: "mock", model: "synthetic", settings: {version: 1}, limits: {}, platform: {limit_microrub: 0}, metrics: [],
   });
   if (url === root(member)) return reply(200, {items: [approval(secondId, "member.action")]});
+  if (url.endsWith("/agent-team")) {
+    await holdTeam;
+    return reply(200, {profile: {...profile, capabilities: []}, agents: []});
+  }
+  if (url.endsWith("/agent-business-profile") && request.method === "PATCH") {
+    let raw = "";
+    for await (const chunk of request) raw += chunk;
+    const update = JSON.parse(raw);
+    if (update.revision !== profile.revision) return reply(409);
+    profile = {model: update.model, industry: update.industry, revision: profile.revision + 1};
+    return reply(204);
+  }
+  if (url.endsWith("/agent-tasks")) return reply(taskStatus, {items: taskRows});
+  if (url.endsWith("/agent-audit")) return reply(200, {items: []});
   if (url === root(owner) && request.method === "GET") return reply(listStatus, {items});
   if (url.startsWith(root(owner) + "/") && url.endsWith("/decision") && request.method === "POST") {
     let raw = "";
@@ -65,7 +92,11 @@ async function handle(request: IncomingMessage, response: ServerResponse) {
     decisions.push({id, body, csrf: typeof csrfHeader === "string" ? csrfHeader : undefined, origin: request.headers.origin});
     if (csrfHeader !== csrf || request.headers.origin !== origin || !request.headers.cookie.includes(`aba_csrf=${csrf}`)) return reply(403);
     await holdDecision;
-    if (decisionStatus === 204) items = items.filter(item => item.id !== id);
+    if (decisionStatus === 204) {
+      const decided = items.find(item => item.id === id);
+      items = items.filter(item => item.id !== id);
+      taskRows = taskRows.map(row => row.id === decided?.task_id ? {...row, status: "queued"} : row);
+    }
     return reply(decisionStatus);
   }
   reply(405);
@@ -105,13 +136,21 @@ test.describe("AI settings approvals on the offline production build", () => {
     decisions = [];
     releaseDecision = undefined;
     holdDecision = undefined;
+    taskRows = [];
+    taskStatus = 200;
+    profile = {model: "service", industry: "vehicle_service", revision: 1};
+    holdTeam = undefined;
+    releaseTeam = undefined;
     await context.addCookies([
       {name: "aba_session", value: "synthetic-session", url: origin, httpOnly: true},
       {name: "aba_csrf", value: csrf, url: origin},
     ]);
   });
 
-  test.afterEach(() => releaseDecision?.());
+  test.afterEach(() => {
+    releaseDecision?.();
+    releaseTeam?.();
+  });
   test.afterAll(async () => {
     if (app && app.exitCode === null) {
       app.kill();
@@ -191,5 +230,60 @@ test.describe("AI settings approvals on the offline production build", () => {
     await expect(section.getByText("catalog.update")).toHaveCount(0);
     await section.getByText("Детали запроса", {exact: true}).click();
     await expect(section.getByRole("button", {name: "Подтвердить", exact: true})).toHaveCount(0);
+  });
+
+  test("refreshes persisted tasks after opening AI Team and recovers a temporary read failure", async ({page}) => {
+    test.setTimeout(30000);
+    taskRows = [task(taskId, "running"), task(childId, "pending", null, taskId)];
+    await page.goto(`${origin}/dashboard/ai-settings?org=${owner}`);
+    const history = page.getByTestId("agent-tasks");
+    const parent = history.getByTestId(`agent-task-${taskId}`);
+    await expect(parent).toContainText("Выполняется");
+
+    taskStatus = 503;
+    await expect(history.getByRole("alert")).toContainText("503");
+    await expect(parent).toContainText("Выполняется");
+    taskRows = [task(taskId, "failed", {state: "partial_failure", recommendations: ["Сверьте доступные данные."]}),
+      task(childId, "failed", null, taskId)];
+    taskStatus = 200;
+
+    await expect(parent.locator("summary")).toContainText("Частичный результат", {timeout: 12000});
+    await expect(parent.locator("summary")).toContainText("Ошибка");
+    await expect(history.getByRole("alert")).toHaveCount(0);
+    await parent.locator("summary").click();
+    await expect(parent.getByRole("link", {name: /коорди|coordinate/i})).toHaveAttribute("href", `#agent-task-${childId}`);
+    await expect(parent.getByText("Сверьте доступные данные.", {exact: true})).toBeVisible();
+  });
+
+  test("continues tracking an older task after its approval", async ({page}) => {
+    taskRows = [task(taskId, "waiting_approval")];
+    items = [{...approval(approvalId, "draft"), task_id: taskId, agent_id: "marketing"}];
+    await page.goto(`${origin}/dashboard/ai-settings?org=${owner}`);
+    const taskRow = page.getByTestId(`agent-task-${taskId}`);
+    await expect(taskRow).toContainText("Требует подтверждения");
+    const request = page.locator(`[data-approval-id="${approvalId}"]`);
+    await expect(request).toContainText("агент подготовит черновик");
+    await request.getByText("Детали запроса", {exact: true}).click();
+    await expect(request.getByRole("link", {name: taskId})).toHaveAttribute("href", `#agent-task-${taskId}`);
+    await request.getByRole("button", {name: "Подтвердить", exact: true}).click();
+
+    await expect(taskRow).toContainText("В очереди");
+    taskRows = [task(taskId, "completed", [{state: "prepared"}])];
+    await expect(taskRow).toContainText("Завершена", {timeout: 7000});
+  });
+
+  test("blocks another profile edit until the saved revision arrives", async ({page}) => {
+    await page.goto(`${origin}/dashboard/ai-settings?org=${owner}`);
+    const industry = page.getByLabel("Выбор отрасли");
+    const save = page.getByRole("button", {name: "Сохранить отрасль"});
+    await expect(industry).toHaveValue("vehicle_service");
+    await industry.selectOption("vehicle_service_hybrid");
+    holdTeam = new Promise(resolve => {releaseTeam = resolve;});
+    await save.click();
+    await expect(page.getByText("Отрасль сохранена.")).toBeVisible();
+    await expect(save).toBeDisabled();
+    releaseTeam?.();
+    await expect(save).toBeEnabled();
+    await expect(industry).toHaveValue("vehicle_service_hybrid");
   });
 });

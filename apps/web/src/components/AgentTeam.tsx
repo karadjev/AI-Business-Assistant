@@ -3,6 +3,7 @@
 import {useEffect, useRef, useState, type FormEvent} from "react";
 import {displayDate} from "@/lib/presentation";
 import {AgentApprovals} from "./AgentApprovals";
+import {AutoServiceApproval} from "./IndustryWorkflows";
 import {StatusBadge} from "./ProductUI";
 import {Alert, Button, Select, Table} from "./UI";
 
@@ -34,6 +35,7 @@ const industries = [
 
 type Task = {
   id: string;
+  parent_id?: string | null;
   agent_id: string;
   action: string;
   status: string;
@@ -94,6 +96,16 @@ const taskStatuses: Record<string, string> = {
   failed: "Ошибка", cancelled: "Отменена", expired: "Срок истёк",
 };
 const activeTaskStatuses = new Set(["pending", "queued", "running"]);
+const settledTaskStatuses = new Set(["waiting_approval", "completed", "failed", "cancelled", "expired"]);
+const taskRefreshLimit = 30;
+
+const taskErrors = new Map([
+  ["deadline_exceeded", "Истекло время выполнения задачи."],
+  ["deadline", "Истекло время выполнения задачи."],
+  ["execution", "Не удалось выполнить операцию."],
+  ["denied", "Операция недоступна или не прошла проверку."],
+  ["partial_failure", "Часть подзадач завершилась с ошибкой."],
+]);
 
 function statusLabel(status: string) {
   return Object.hasOwn(taskStatuses, status) ? taskStatuses[status] : status;
@@ -131,6 +143,7 @@ function isTask(value: unknown): value is Task {
   return isObject(value) && typeof value.id === "string" && typeof value.agent_id === "string"
     && typeof value.action === "string" && typeof value.status === "string" && typeof value.created_at === "string"
     && typeof value.deadline === "string" && typeof value.retry_count === "number"
+    && (value.parent_id === undefined || isNullableText(value.parent_id))
     && isNullableText(value.completed_at) && isNullableText(value.error_code) && "result" in value;
 }
 
@@ -148,31 +161,40 @@ function parseItems<T>(value: unknown, check: (item: unknown) => item is T): T[]
 const parseTasks = (value: unknown) => parseItems(value, isTask);
 const parseAudit = (value: unknown) => parseItems(value, isAuditEntry);
 
-type Resource<T> = {data?: T; error?: string};
+type Resource<T> = {data?: T; error?: string; retryable?: boolean; version?: number};
 
-function useResource<T>(endpoint: string | null, version: number, parse: (value: unknown) => T) {
+class ResourceError extends Error {
+  constructor(message: string, readonly retryable: boolean) {
+    super(message);
+  }
+}
+
+function useResource<T>(endpoint: string | null, version: number, parse: (value: unknown) => T, preserveOnRetry = false) {
   const [resource, setResource] = useState<Resource<T>>({});
   useEffect(() => {
     if (!endpoint) return;
     const controller = new AbortController();
     async function load(url: string) {
       try {
-        const response = await fetch(url, {cache: "no-store", signal: controller.signal});
-        if (response.status === 401) throw new Error("Войдите снова, чтобы загрузить данные.");
-        if (response.status === 403) throw new Error("У вас нет доступа к этим данным магазина.");
-        if (!response.ok) throw new Error(`Не удалось загрузить данные (HTTP ${response.status}).`);
+        const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]);
+        const response = await fetch(url, {cache: "no-store", signal});
+        if (response.status === 401) throw new ResourceError("Войдите снова, чтобы загрузить данные.", false);
+        if (response.status === 403) throw new ResourceError("У вас нет доступа к этим данным магазина.", false);
+        if (!response.ok) throw new ResourceError(`Не удалось загрузить данные (HTTP ${response.status}).`, response.status >= 500);
         const payload: unknown = await response.json().catch(() => null);
         const data = parse(payload);
-        if (!controller.signal.aborted) setResource({data});
+        if (!controller.signal.aborted) setResource({data, version});
       } catch (failure) {
-        const error = failure instanceof TypeError || !(failure instanceof Error)
-          ? "Сервис временно недоступен." : failure.message;
-        if (!controller.signal.aborted) setResource({error});
+        if (controller.signal.aborted) return;
+        const networkFailure = failure instanceof TypeError || (failure instanceof DOMException && failure.name === "TimeoutError");
+        const retryable = failure instanceof ResourceError ? failure.retryable : networkFailure;
+        const error = networkFailure || !(failure instanceof Error) ? "Сервис временно недоступен." : failure.message;
+        setResource(current => ({data: preserveOnRetry && retryable ? current.data : undefined, error, retryable, version}));
       }
     }
     void load(endpoint);
     return () => controller.abort();
-  }, [endpoint, version, parse]);
+  }, [endpoint, version, parse, preserveOnRetry]);
   return resource;
 }
 
@@ -182,11 +204,13 @@ function LoadFeedback({resource, label}: {resource: Resource<unknown>; label: st
   return null;
 }
 
-export function AgentTeam({organizationId, timezone, owner, getCsrfToken}: {
+export function AgentTeam({organizationId, timezone, owner, getCsrfToken, externalTaskId, onTaskSettled}: {
   organizationId: string;
   timezone: string;
   owner: boolean;
   getCsrfToken: () => string;
+  externalTaskId?: string;
+  onTaskSettled?: (task: {id: string; status: string; result: unknown}) => void;
 }) {
   const root = `/api/v1/organizations/${organizationId}`;
   const tasksEndpoint = `${root}/agent-tasks`;
@@ -195,7 +219,7 @@ export function AgentTeam({organizationId, timezone, owner, getCsrfToken}: {
   const [activityVersion, setActivityVersion] = useState(0);
   const [approvalVersion, setApprovalVersion] = useState(0);
   const team = useResource(owner ? `${root}/agent-team` : null, teamVersion, parseTeam);
-  const tasks = useResource(owner ? tasksEndpoint : null, taskVersion, parseTasks);
+  const tasks = useResource(owner ? tasksEndpoint : null, taskVersion, parseTasks, true);
   const audit = useResource(owner ? `${root}/agent-audit` : null, activityVersion, parseAudit);
   const [selected, setSelected] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -204,7 +228,10 @@ export function AgentTeam({organizationId, timezone, owner, getCsrfToken}: {
   const [profileError, setProfileError] = useState("");
   const [profileNotice, setProfileNotice] = useState("");
   const inFlight = useRef(false);
-  const remainingPolls = useRef(0);
+  const remainingPolls = useRef(taskRefreshLimit);
+  const [pollPaused, setPollPaused] = useState(false);
+  const priorTasks = useRef<{activity: string; approvals: string} | null>(null);
+  const notifiedTask = useRef<string | null>(null);
   const pendingKeys = useRef(new Map<string, string>());
 
   const agents = team.data?.agents ?? [];
@@ -212,46 +239,92 @@ export function AgentTeam({organizationId, timezone, owner, getCsrfToken}: {
     agents.some(agent => agent.id === operation.agentId && agent.enabled)
     && (operation.action !== "coordinate_growth" || team.data?.profile.capabilities.includes("growth_review")));
   const operation = availableOperations.find(operation => operation.id === selected);
+  const profilePending = savingProfile || team.version !== teamVersion;
   function agentName(id: string) {
     const name = agents.find(agent => agent.id === id)?.name;
     return name && name !== id ? name : agentNames.get(id) ?? id;
   }
   const refreshActivity = () => {
+    remainingPolls.current = taskRefreshLimit;
+    setPollPaused(false);
     setTaskVersion(version => version + 1);
     setActivityVersion(version => version + 1);
   };
-  const submittedTask = submission && "id" in submission ? tasks.data?.find(task => task.id === submission.id) : undefined;
+  const submittedTaskId = submission && "id" in submission ? submission.id : undefined;
+  const submittedTask = tasks.data?.find(task => task.id === submittedTaskId);
+  const externalTask = tasks.data?.find(task => task.id === externalTaskId);
+  const recentTasks = tasks.data ?? [];
+  const taskIDs = new Set(recentTasks.map(task => task.id));
+  const childTasks = new Map<string, Task[]>();
+  for (const task of recentTasks) {
+    if (!task.parent_id) continue;
+    const siblings = childTasks.get(task.parent_id) ?? [];
+    siblings.push(task);
+    childTasks.set(task.parent_id, siblings);
+  }
+  const hasActiveTasks = recentTasks.some(task => activeTaskStatuses.has(task.status));
+  const taskMissing = Boolean((submittedTaskId && !submittedTask) || (externalTaskId && !externalTask));
+
   useEffect(() => {
-    if (!owner || !submission || !("id" in submission) || tasks.error) return;
-    if (submittedTask && !activeTaskStatuses.has(submittedTask.status)) {
-      const timer = window.setTimeout(() => {
-        setActivityVersion(version => version + 1);
-        setApprovalVersion(version => version + 1);
-      }, 0);
-      return () => window.clearTimeout(timer);
-    }
+    if (!owner || !externalTaskId) return;
+    const timer = window.setTimeout(() => {
+      remainingPolls.current = taskRefreshLimit;
+      setPollPaused(false);
+      setTaskVersion(version => version + 1);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [owner, externalTaskId]);
+
+  useEffect(() => {
+    if (!owner || !externalTask || !onTaskSettled || !settledTaskStatuses.has(externalTask.status)) return;
+    const revision = `${externalTask.id}:${externalTask.status}`;
+    if (notifiedTask.current === revision) return;
+    notifiedTask.current = revision;
+    onTaskSettled({id: externalTask.id, status: externalTask.status, result: externalTask.result});
+  }, [owner, externalTask, onTaskSettled]);
+
+  useEffect(() => {
+    if (!owner || tasks.version !== taskVersion || (tasks.error && !tasks.retryable) ||
+      (!hasActiveTasks && !taskMissing && !tasks.retryable)) return;
     let requested = false;
     function poll() {
-      if (!requested && document.visibilityState === "visible" && remainingPolls.current > 0) {
-        requested = true;
-        remainingPolls.current--;
-        setTaskVersion(version => version + 1);
+      if (requested || document.visibilityState !== "visible") return;
+      requested = true;
+      if (remainingPolls.current === 0) {
+        setPollPaused(true);
+        return;
       }
+      remainingPolls.current--;
+      setTaskVersion(version => version + 1);
     }
-    const timer = window.setTimeout(poll, 4000);
+    const timer = window.setTimeout(poll, tasks.retryable ? 8000 : 4000);
     document.addEventListener("visibilitychange", poll);
     return () => {
       window.clearTimeout(timer);
       document.removeEventListener("visibilitychange", poll);
     };
-  }, [owner, submission, submittedTask, tasks.data, tasks.error]);
+  }, [owner, taskVersion, tasks, hasActiveTasks, taskMissing]);
+
+  useEffect(() => {
+    if (!owner || !tasks.data || tasks.error) return;
+    const activity = tasks.data.map(task => `${task.id}:${task.status}:${task.retry_count}`).join(",");
+    const approvals = tasks.data.filter(task => task.status === "waiting_approval").map(task => task.id).join(",");
+    const previous = priorTasks.current;
+    priorTasks.current = {activity, approvals};
+    if (!previous) return;
+    const timer = window.setTimeout(() => {
+      if (previous.activity !== activity) setActivityVersion(version => version + 1);
+      if (previous.approvals !== approvals) setApprovalVersion(version => version + 1);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [owner, tasks]);
 
   async function updateProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const profile = team.data?.profile;
     const choice = new FormData(event.currentTarget).get("industry");
     const industry = industries.find(item => item.id === choice);
-    if (!owner || !profile || !industry || savingProfile) return;
+    if (!owner || !profile || !industry || profilePending) return;
     const industryId = "industry" in industry ? industry.industry : industry.id;
     if (profile.industry === industryId && profile.model === industry.model) return;
     const csrf = getCsrfToken();
@@ -265,6 +338,7 @@ export function AgentTeam({organizationId, timezone, owner, getCsrfToken}: {
     try {
       const response = await fetch(`${root}/agent-business-profile`, {
         method: "PATCH", headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf},
+        signal: AbortSignal.timeout(10000),
         body: JSON.stringify({model: industry.model, industry: industryId, revision: profile.revision}),
       });
       if (response.status === 409) {
@@ -299,7 +373,7 @@ export function AgentTeam({organizationId, timezone, owner, getCsrfToken}: {
       const idempotencyKey = pendingKeys.current.get(operation.id) ?? crypto.randomUUID();
       pendingKeys.current.set(operation.id, idempotencyKey);
       const response = await fetch(tasksEndpoint, {
-        method: "POST",
+        method: "POST", signal: AbortSignal.timeout(10000),
         headers: {"Content-Type": "application/json", "X-CSRF-Token": csrfToken},
         body: JSON.stringify({agent_id: agentId, action, idempotency_key: idempotencyKey}),
       });
@@ -314,7 +388,6 @@ export function AgentTeam({organizationId, timezone, owner, getCsrfToken}: {
         throw new Error("Missing task ID");
       }
       pendingKeys.current.delete(operation.id);
-      remainingPolls.current = 30;
       setSubmission({id: data.id});
       refreshActivity();
       setApprovalVersion(version => version + 1);
@@ -348,11 +421,11 @@ export function AgentTeam({organizationId, timezone, owner, getCsrfToken}: {
           <Select key={team.data.profile.revision} name="industry" defaultValue={
             team.data.profile.industry === "vehicle_service" && team.data.profile.model === "hybrid"
               ? "vehicle_service_hybrid" : team.data.profile.industry
-          } disabled={savingProfile}>
+          } disabled={profilePending}>
             {industries.map(industry => <option key={industry.id} value={industry.id}>{industry.label}</option>)}
           </Select>
         </label>
-        <Button type="submit" disabled={savingProfile}>Сохранить отрасль</Button>
+        <Button type="submit" disabled={profilePending}>Сохранить отрасль</Button>
       </form>
       {profileError && <Alert tone="danger">{profileError}</Alert>}
       {profileNotice && <p role="status">{profileNotice}</p>}
@@ -395,37 +468,62 @@ export function AgentTeam({organizationId, timezone, owner, getCsrfToken}: {
       : <p>Управлять AI-командой и просматривать журнал может владелец магазина.</p>}
 
     <AgentApprovals organizationId={organizationId} timezone={timezone} canDecide={owner} getCsrfToken={getCsrfToken}
-      refreshVersion={approvalVersion} onDecision={() => {
-        remainingPolls.current = 30;
-        refreshActivity();
-      }}/>
+      refreshVersion={approvalVersion} onDecision={refreshActivity} taskIds={taskIDs}/>
 
     {owner && <>
       <section aria-labelledby="agent-tasks-heading" data-testid="agent-tasks">
         <h3 id="agent-tasks-heading">Задачи и результаты</h3>
         <LoadFeedback resource={tasks} label="История задач"/>
+        {tasks.error && tasks.data && <p>Показано последнее успешно загруженное состояние.</p>}
+        {pollPaused && (hasActiveTasks || taskMissing || tasks.retryable) && <p role="status">
+          Автообновление приостановлено. Нажмите «Обновить AI-команду», чтобы проверить состояние.
+        </p>}
         {tasks.data?.length === 0 && <p>Задач пока нет.</p>}
         {tasks.data && tasks.data.length > 0 && <div className="agent-team-tasks">
-          {tasks.data.map(task => <details className="channel-card" key={task.id} data-testid={`agent-task-${task.id}`}>
-            <summary>
-              {agentName(task.agent_id)} · {task.action}{" "}
-              <StatusBadge tone={task.status === "completed" ? "positive" : task.status === "failed" ? "danger" :
-                task.status === "waiting_approval" ? "warning" : "neutral"}>
-                {statusLabel(task.status)}
-              </StatusBadge>
-              <small>{displayDate(task.created_at, timezone)}</small>
-            </summary>
-            <dl className="agent-team-details">
-              <dt>Задача</dt><dd>{task.id}</dd>
-              <dt>Срок</dt><dd>{displayDate(task.deadline, timezone)}</dd>
-              {task.completed_at && <><dt>Завершена</dt><dd>{displayDate(task.completed_at, timezone)}</dd></>}
-              <dt>Повторные попытки</dt><dd>{task.retry_count}</dd>
-              {task.error_code && <><dt>Код ошибки</dt><dd>{task.error_code}</dd></>}
-            </dl>
-            <h4>Результат</h4>
-            {task.result === null ? <p>Результат отсутствует.</p>
-              : <pre data-testid={`agent-task-result-${task.id}`}>{JSON.stringify(task.result, null, 2)}</pre>}
-          </details>)}
+          {tasks.data.map(task => {
+            const children = childTasks.get(task.id) ?? [];
+            const payload: unknown = Array.isArray(task.result) ? task.result[0] : task.result;
+            const result = isObject(payload) ? payload : null;
+            const partial = result?.state === "partial_failure";
+            const recommendations = isTextList(result?.recommendations) ? result.recommendations : [];
+            return <details className="channel-card" key={task.id} id={`agent-task-${task.id}`} data-testid={`agent-task-${task.id}`}>
+              <summary>
+                {agentName(task.agent_id)} · {task.action}{" "}
+                <StatusBadge tone={task.status === "completed" ? "positive" : task.status === "failed" ? "danger" :
+                  task.status === "waiting_approval" ? "warning" : "neutral"}>
+                  {statusLabel(task.status)}
+                </StatusBadge>
+                {partial && <StatusBadge tone="warning">Частичный результат</StatusBadge>}
+                <small>{displayDate(task.created_at, timezone)}</small>
+              </summary>
+              <dl className="agent-team-details">
+                <dt>Задача</dt><dd>{task.id}</dd>
+                <dt>Срок</dt><dd>{displayDate(task.deadline, timezone)}</dd>
+                {task.completed_at && <><dt>Завершена</dt><dd>{displayDate(task.completed_at, timezone)}</dd></>}
+                <dt>Повторные попытки</dt><dd>{task.retry_count}</dd>
+                {task.parent_id && uuid.test(task.parent_id) && taskIDs.has(task.parent_id) &&
+                  <><dt>Родительская задача</dt><dd><a href={`#agent-task-${task.parent_id}`}>{task.parent_id}</a></dd></>}
+                {task.error_code && <><dt>Причина</dt><dd>{taskErrors.get(task.error_code) ?? task.error_code}</dd></>}
+              </dl>
+              {children.length > 0 && <>
+                <h4>Подзадачи в истории</h4>
+                <ul>{children.map(child => <li key={child.id}>
+                  <a href={`#agent-task-${child.id}`}>{agentName(child.agent_id)} · {child.action}</a> · {statusLabel(child.status)}
+                </li>)}</ul>
+              </>}
+              <h4>Результат</h4>
+              {partial && <p>Часть работы не выполнена. Проверьте статусы подзадач и доступный результат.</p>}
+              {task.action === "delegate_service" && task.status === "completed" && result?.state === "approval_required" &&
+                <AutoServiceApproval organizationId={organizationId} taskId={task.id} getCsrfToken={getCsrfToken}/>}
+              {recommendations.length > 0 && <>
+                <h5>Рекомендации по результатам команды</h5>
+                <ul>{recommendations.map((message, index) => <li key={index}>{message}</li>)}</ul>
+              </>}
+              {task.result === null ? <p>{activeTaskStatuses.has(task.status) ? "Появится после обработки." :
+                task.status === "waiting_approval" ? "Выполнение начнётся после согласования." : "Результат отсутствует."}</p>
+                : <pre data-testid={`agent-task-result-${task.id}`}>{JSON.stringify(task.result, null, 2)}</pre>}
+            </details>;
+          })}
         </div>}
       </section>
 

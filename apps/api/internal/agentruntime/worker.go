@@ -46,16 +46,23 @@ func (s Service) ProcessOne(ctx context.Context) (bool, error) {
 	defer cancel()
 	var payload json.RawMessage
 	var failure *string
+	var retry bool
 	if err == nil {
 		payload, err = json.Marshal(result.Results)
 		if err == nil && (job.Action == "coordinate" || job.Action == "coordinate_growth") {
 			var childResults json.RawMessage
 			err = s.Pool.QueryRow(finish, "SELECT platform.agent_child_results($1,$2)", job.ID, lease).Scan(&childResults)
 			if err == nil {
-				payload, err = json.Marshal(struct {
-					Plan, Children  json.RawMessage
-					Recommendations []string `json:"recommendations,omitempty"`
-				}{payload, childResults, growthRecommendations(job.Action, childResults)})
+				report, aggregateErr := coordinateResult(job.Action, payload, childResults)
+				if aggregateErr != nil {
+					err = aggregateErr
+				} else {
+					payload, err = json.Marshal(report)
+					if report.State == "failed" {
+						code := "execution"
+						failure = &code
+					}
+				}
 			}
 		}
 	}
@@ -68,6 +75,7 @@ func (s Service) ProcessOne(ctx context.Context) (bool, error) {
 			code = "denied"
 		}
 		failure = &code
+		retry = code == "execution"
 	}
 	if err == nil && delegationParent(job.Action) && len(result.Results) == 1 {
 		var aggregate delegationResult
@@ -77,7 +85,7 @@ func (s Service) ProcessOne(ctx context.Context) (bool, error) {
 		}
 	}
 	var ok bool
-	finishErr := s.Pool.QueryRow(finish, "SELECT platform.agent_finish($1,$2,$3,$4::jsonb,$5,$6)", job.ID, lease, job.ExecutionID, payload, failure, failure != nil && *failure == "execution").Scan(&ok)
+	finishErr := s.Pool.QueryRow(finish, "SELECT platform.agent_finish($1,$2,$3,$4::jsonb,$5,$6)", job.ID, lease, job.ExecutionID, payload, failure, retry).Scan(&ok)
 	if finishErr != nil {
 		return true, finishErr
 	}
@@ -240,25 +248,40 @@ func (a *attempt) Read(ctx context.Context, s af.Scope) (specialists.ReadResult,
 	if err := a.service.Pool.QueryRow(ctx, "SELECT platform.agent_metrics_projection($1,$2)", a.job.ID, a.lease).Scan(&data); err != nil {
 		return specialists.ReadResult{}, err
 	}
-	var metrics struct {
-		Count, Revenue int64
-		PreviousCount  int64 `json:"previous_count"`
-		PreviousValue  int64 `json:"previous_value"`
-	}
-	if err := json.Unmarshal(data, &metrics); err != nil {
+	values, err := orderMetrics(data)
+	if err != nil {
 		return specialists.ReadResult{}, err
 	}
 	now := time.Now()
-	values := []specialists.Metric{
-		{Name: "completed_orders_created_last_30d", Value: metrics.Count, Unit: "orders"},
-		{Name: "completed_order_value_last_30d", Value: metrics.Revenue, Unit: "RUB_minor"},
-		{Name: "completed_orders_created_previous_30d", Value: metrics.PreviousCount, Unit: "orders"},
-		{Name: "completed_order_value_previous_30d", Value: metrics.PreviousValue, Unit: "RUB_minor"},
-	}
-	if metrics.Count > 0 {
-		values = append(values, specialists.Metric{Name: "average_completed_order_value_last_30d", Value: metrics.Revenue / metrics.Count, Unit: "RUB_minor"})
-	}
 	return specialists.ReadResult{Scope: s, Revision: a.job.ExecutionID, ObservedAt: now, ValidUntil: now.Add(time.Minute), Metrics: values}, nil
+}
+
+func orderMetrics(data []byte) ([]specialists.Metric, error) {
+	if len(data) == 0 {
+		return nil, af.ErrDenied
+	}
+	var metrics struct {
+		Count         *int64 `json:"count"`
+		Revenue       *int64 `json:"revenue"`
+		PreviousCount *int64 `json:"previous_count"`
+		PreviousValue *int64 `json:"previous_value"`
+	}
+	if err := json.Unmarshal(data, &metrics); err != nil {
+		return nil, err
+	}
+	if metrics.Count == nil || metrics.Revenue == nil || metrics.PreviousCount == nil || metrics.PreviousValue == nil {
+		return nil, af.ErrDenied
+	}
+	values := []specialists.Metric{
+		{Name: "completed_orders_created_last_30d", Value: *metrics.Count, Unit: "orders"},
+		{Name: "completed_order_value_last_30d", Value: *metrics.Revenue, Unit: "RUB_minor"},
+		{Name: "completed_orders_created_previous_30d", Value: *metrics.PreviousCount, Unit: "orders"},
+		{Name: "completed_order_value_previous_30d", Value: *metrics.PreviousValue, Unit: "RUB_minor"},
+	}
+	if *metrics.Count > 0 {
+		values = append(values, specialists.Metric{Name: "average_completed_order_value_last_30d", Value: *metrics.Revenue / *metrics.Count, Unit: "RUB_minor"})
+	}
+	return values, nil
 }
 
 type contextSource struct{ a *attempt }

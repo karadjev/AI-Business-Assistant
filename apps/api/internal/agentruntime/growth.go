@@ -36,19 +36,47 @@ func (a *attempt) readGrowth(ctx context.Context, s af.Scope) (specialists.ReadR
 	return specialists.ReadResult{Scope: s, Revision: a.job.ExecutionID, ObservedAt: now, ValidUntil: now.Add(time.Minute), Metrics: metrics}, nil
 }
 
-func growthRecommendations(action string, raw json.RawMessage) []string {
-	if action != "coordinate_growth" {
-		return nil
+type coordinatorChild struct {
+	Agent  string          `json:"agent_id"`
+	Status string          `json:"status"`
+	Result json.RawMessage `json:"result"`
+}
+
+type coordinatorReport struct {
+	Plan, Children  json.RawMessage
+	State           string   `json:"state"`
+	Recommendations []string `json:"recommendations,omitempty"`
+}
+
+func coordinateResult(action string, plan, raw json.RawMessage) (coordinatorReport, error) {
+	var children []coordinatorChild
+	if err := json.Unmarshal(raw, &children); err != nil {
+		return coordinatorReport{}, err
 	}
-	var children []struct {
-		Agent  string          `json:"agent_id"`
-		Status string          `json:"status"`
-		Result json.RawMessage `json:"result"`
+	if len(children) == 0 {
+		return coordinatorReport{}, af.ErrDenied
 	}
+	completed := 0
+	for _, child := range children {
+		if child.Status == "completed" && len(child.Result) != 0 && string(child.Result) != "null" {
+			completed++
+		}
+	}
+	report := coordinatorReport{Plan: plan, Children: raw, State: "completed"}
+	switch {
+	case completed == 0:
+		report.State = "failed"
+	case completed != len(children):
+		report.State = "partial_failure"
+	}
+	if action == "coordinate_growth" {
+		report.Recommendations = growthRecommendations(children)
+	}
+	return report, nil
+}
+
+func growthRecommendations(children []coordinatorChild) []string {
 	// Decode only completed metric children. Marketing has its own typed result.
-	if json.Unmarshal(raw, &children) != nil {
-		return nil
-	}
 	var out []string
 	var currentCount, previousCount *int64
 	var units *int64

@@ -173,6 +173,7 @@ func testStage25Operations(t *testing.T, d *db.Database, admin *pgx.Conn, ctx co
 		}
 	}
 	var report struct {
+		State    string `json:"state"`
 		Children []struct {
 			Agent  string `json:"agent_id"`
 			Status string `json:"status"`
@@ -195,7 +196,7 @@ func testStage25Operations(t *testing.T, d *db.Database, admin *pgx.Conn, ctx co
 	if err := json.Unmarshal(saved, &report); err != nil {
 		t.Fatal(err)
 	}
-	if len(report.Children) != 4 || len(report.Recommendations) == 0 {
+	if report.State != "completed" || len(report.Children) != 4 || len(report.Recommendations) == 0 {
 		t.Fatalf("incomplete growth report: %+v", report)
 	}
 	for _, child := range report.Children {
@@ -208,4 +209,55 @@ func testStage25Operations(t *testing.T, d *db.Database, admin *pgx.Conn, ctx co
 			}
 		}
 	}
+
+	t.Run("all-specialists-unavailable", func(t *testing.T) {
+		parent, err := runtime.Submit(ctx, a.tenant, agentruntime.Request{
+			AgentID: "business_manager", Action: "coordinate", IdempotencyKey: auth.UUID(),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var approval, hash, analytics string
+		if err := admin.QueryRow(ctx, `SELECT a.id,a.parameters_hash FROM platform.agent_approvals a
+			JOIN platform.agent_tasks t ON t.id=a.task_id WHERE t.parent_id=$1`, parent).Scan(&approval, &hash); err != nil {
+			t.Fatal(err)
+		}
+		if err := runtime.Decide(ctx, a.tenant, approval, "rejected", hash); err != nil {
+			t.Fatal(err)
+		}
+		if err := admin.QueryRow(ctx, "SELECT id FROM platform.agent_tasks WHERE parent_id=$1 AND agent_id='analytics'", parent).Scan(&analytics); err != nil {
+			t.Fatal(err)
+		}
+		lease := auth.UUID()
+		var claimed, execution string
+		if err := d.Pool.QueryRow(ctx, `SELECT j->>'ID',j->>'ExecutionID' FROM platform.agent_claim($1,$2) AS j`,
+			runtime.Proof(), lease).Scan(&claimed, &execution); err != nil || claimed != analytics {
+			t.Fatalf("claim did not select the analytics child: %v", err)
+		}
+		var failed bool
+		if err := d.Pool.QueryRow(ctx, "SELECT platform.agent_finish($1,$2,$3,NULL,'execution',false)",
+			analytics, lease, execution).Scan(&failed); err != nil || !failed {
+			t.Fatalf("fenced terminal analytics failure: %v", err)
+		}
+		if ran, err := runtime.ProcessOne(ctx); err != nil || !ran {
+			t.Fatalf("parent aggregation: %t %v", ran, err)
+		}
+		var taskStatus, queueStatus string
+		var saved []byte
+		if err := admin.QueryRow(ctx, `SELECT t.status,q.status,e.result
+			FROM platform.agent_tasks t JOIN platform.channel_inbox q ON q.agent_task_id=t.id
+			JOIN platform.agent_executions e ON e.task_id=t.id WHERE t.id=$1`, parent).
+			Scan(&taskStatus, &queueStatus, &saved); err != nil {
+			t.Fatal(err)
+		}
+		var result struct {
+			State    string `json:"state"`
+			Children []struct{ Status string }
+		}
+		if err := json.Unmarshal(saved, &result); err != nil || taskStatus != "failed" || queueStatus != "failed" ||
+			result.State != "failed" || len(result.Children) != 2 ||
+			result.Children[0].Status != "failed" || result.Children[1].Status != "cancelled" {
+			t.Fatalf("terminal outcome was lost: task=%s queue=%s report=%+v err=%v", taskStatus, queueStatus, result, err)
+		}
+	})
 }

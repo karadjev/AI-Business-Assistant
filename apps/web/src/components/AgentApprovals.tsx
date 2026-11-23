@@ -37,7 +37,8 @@ function isApproval(value: unknown): value is Approval {
 }
 
 async function loadApprovals(endpoint: string, signal: AbortSignal): Promise<Approval[]> {
-  const response = await fetch(endpoint, {cache: "no-store", signal}).catch(() => null);
+  const timedSignal = AbortSignal.any([signal, AbortSignal.timeout(10000)]);
+  const response = await fetch(endpoint, {cache: "no-store", signal: timedSignal}).catch(() => null);
   if (!response) throw new Error("Не удалось загрузить запросы на подтверждение.");
   if (response.status === 401) throw new Error("Войдите снова, чтобы увидеть запросы на подтверждение.");
   if (response.status === 403) throw new Error("У вас нет доступа к запросам этого магазина.");
@@ -51,13 +52,14 @@ async function loadApprovals(endpoint: string, signal: AbortSignal): Promise<App
   return items.filter(item => item.status === "pending");
 }
 
-export function AgentApprovals({organizationId, timezone, canDecide, getCsrfToken, refreshVersion = 0, onDecision}: {
+export function AgentApprovals({organizationId, timezone, canDecide, getCsrfToken, refreshVersion = 0, onDecision, taskIds}: {
   organizationId: string;
   timezone: string;
   canDecide: boolean;
   getCsrfToken: () => string;
   refreshVersion?: number;
   onDecision?: () => void;
+  taskIds?: ReadonlySet<string>;
 }) {
   const endpoint = `/api/v1/organizations/${organizationId}/agent-approvals`;
   const [list, setList] = useState<ApprovalList>({kind: "loading"});
@@ -127,6 +129,7 @@ export function AgentApprovals({organizationId, timezone, canDecide, getCsrfToke
     try {
       const response = await fetch(`${endpoint}/${item.id}/decision`, {
         method: "POST",
+        signal: AbortSignal.timeout(10000),
         headers: {"Content-Type": "application/json", "X-CSRF-Token": csrfToken},
         body: JSON.stringify({decision, parameters_hash: item.parameters_hash}),
       });
@@ -183,12 +186,16 @@ export function AgentApprovals({organizationId, timezone, canDecide, getCsrfToke
                     {expired ? "Срок истёк" : "Ожидает решения"}
                   </StatusBadge>
                   <p>{item.reason}</p>
+                  {item.agent_id === "marketing" && item.action === "draft" && <p>
+                    После подтверждения агент подготовит черновик. Публикация и отправка требуют отдельных разрешений.
+                  </p>}
                   <p>Срок действия: <time dateTime={item.expires_at}>{displayDate(item.expires_at, timezone)}</time></p>
                   <details className="technical-details">
                     <summary>Детали запроса</summary>
                     <dl>
                       <dt>Запрос</dt><dd>{item.id}</dd>
-                      <dt>Задача</dt><dd>{item.task_id}</dd>
+                      <dt>Задача</dt><dd>{canDecide && taskIds?.has(item.task_id)
+                        ? <a href={`#agent-task-${item.task_id}`}>{item.task_id}</a> : item.task_id}</dd>
                       <dt>Агент</dt><dd>{item.agent_id}</dd>
                       <dt>Параметры действия</dt><dd><pre>{JSON.stringify(item.parameters, null, 2)}</pre></dd>
                     </dl>
