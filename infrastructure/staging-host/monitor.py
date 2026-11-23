@@ -1,16 +1,13 @@
 import json
 from pathlib import Path
 import shutil
-import subprocess
+import sys
 
-release = Path("/srv/aba/verify-20261122/release-clean")
-project = "aba-private-staging"
-base = ["docker", "compose", "--env-file", "/srv/aba/staging/environment", "-f",
-        str(release / "infrastructure/deployment/compose.yml"), "-p", project]
+sys.dont_write_bytecode = True
+from active_release import check_live, load, run
 
-def run(args, *, data=None):
-    return subprocess.run(args, input=data, capture_output=True, check=True, text=True, timeout=15).stdout
-
+record, base, _, manifest = load()
+check_live(record, manifest)
 raw = run(base + ["ps", "--all", "--format", "json"]).strip()
 rows = json.loads(raw) if raw.startswith("[") else [json.loads(line) for line in raw.splitlines()]
 core = {"api", "mailpit", "postgres", "proxy", "web", "worker"}
@@ -44,7 +41,7 @@ SELECT json_build_object(
  'email_failed',(SELECT count(*) FROM platform.email_outbox WHERE status='failed'));
 ROLLBACK;
 """).strip())
-if db["schema"] != 29:
+if db["schema"] != record["database_schema"]:
     raise SystemExit("FAIL: unexpected schema")
 ids = [r["ID"] for r in rows if r["Service"] in core]
 stats = [json.loads(l) for l in run(["docker", "stats", "--no-stream", "--format", "{{json .}}", *ids]).splitlines()]

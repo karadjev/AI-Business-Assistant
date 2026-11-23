@@ -26,6 +26,7 @@ const industries = [
   {id: "furniture", model: "trade", label: "Мебель"},
   {id: "apparel", model: "trade", label: "Одежда"},
   {id: "vehicle_service", model: "service", label: "Автосервис"},
+  {id: "vehicle_service_hybrid", industry: "vehicle_service", model: "hybrid", label: "Автосервис с продажей запчастей"},
   {id: "personal_services", model: "service", label: "Персональные услуги"},
   {id: "real_estate", model: "agency", label: "Недвижимость"},
   {id: "mixed_nonfood", model: "hybrid", label: "Смешанный непродовольственный ассортимент"},
@@ -92,6 +93,11 @@ const taskStatuses: Record<string, string> = {
   waiting_approval: "Требует подтверждения", completed: "Завершена",
   failed: "Ошибка", cancelled: "Отменена", expired: "Срок истёк",
 };
+const activeTaskStatuses = new Set(["pending", "queued", "running"]);
+
+function statusLabel(status: string) {
+  return Object.hasOwn(taskStatuses, status) ? taskStatuses[status] : status;
+}
 
 const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -185,10 +191,11 @@ export function AgentTeam({organizationId, timezone, owner, getCsrfToken}: {
   const root = `/api/v1/organizations/${organizationId}`;
   const tasksEndpoint = `${root}/agent-tasks`;
   const [teamVersion, setTeamVersion] = useState(0);
+  const [taskVersion, setTaskVersion] = useState(0);
   const [activityVersion, setActivityVersion] = useState(0);
   const [approvalVersion, setApprovalVersion] = useState(0);
   const team = useResource(owner ? `${root}/agent-team` : null, teamVersion, parseTeam);
-  const tasks = useResource(owner ? tasksEndpoint : null, activityVersion, parseTasks);
+  const tasks = useResource(owner ? tasksEndpoint : null, taskVersion, parseTasks);
   const audit = useResource(owner ? `${root}/agent-audit` : null, activityVersion, parseAudit);
   const [selected, setSelected] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -197,6 +204,7 @@ export function AgentTeam({organizationId, timezone, owner, getCsrfToken}: {
   const [profileError, setProfileError] = useState("");
   const [profileNotice, setProfileNotice] = useState("");
   const inFlight = useRef(false);
+  const remainingPolls = useRef(0);
   const pendingKeys = useRef(new Map<string, string>());
 
   const agents = team.data?.agents ?? [];
@@ -208,14 +216,44 @@ export function AgentTeam({organizationId, timezone, owner, getCsrfToken}: {
     const name = agents.find(agent => agent.id === id)?.name;
     return name && name !== id ? name : agentNames.get(id) ?? id;
   }
-  const refreshActivity = () => setActivityVersion(version => version + 1);
+  const refreshActivity = () => {
+    setTaskVersion(version => version + 1);
+    setActivityVersion(version => version + 1);
+  };
+  const submittedTask = submission && "id" in submission ? tasks.data?.find(task => task.id === submission.id) : undefined;
+  useEffect(() => {
+    if (!owner || !submission || !("id" in submission) || tasks.error) return;
+    if (submittedTask && !activeTaskStatuses.has(submittedTask.status)) {
+      const timer = window.setTimeout(() => {
+        setActivityVersion(version => version + 1);
+        setApprovalVersion(version => version + 1);
+      }, 0);
+      return () => window.clearTimeout(timer);
+    }
+    let requested = false;
+    function poll() {
+      if (!requested && document.visibilityState === "visible" && remainingPolls.current > 0) {
+        requested = true;
+        remainingPolls.current--;
+        setTaskVersion(version => version + 1);
+      }
+    }
+    const timer = window.setTimeout(poll, 4000);
+    document.addEventListener("visibilitychange", poll);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", poll);
+    };
+  }, [owner, submission, submittedTask, tasks.data, tasks.error]);
 
   async function updateProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const profile = team.data?.profile;
     const choice = new FormData(event.currentTarget).get("industry");
     const industry = industries.find(item => item.id === choice);
-    if (!owner || !profile || !industry || savingProfile || profile.industry === industry.id) return;
+    if (!owner || !profile || !industry || savingProfile) return;
+    const industryId = "industry" in industry ? industry.industry : industry.id;
+    if (profile.industry === industryId && profile.model === industry.model) return;
     const csrf = getCsrfToken();
     setProfileNotice("");
     setProfileError("");
@@ -227,7 +265,7 @@ export function AgentTeam({organizationId, timezone, owner, getCsrfToken}: {
     try {
       const response = await fetch(`${root}/agent-business-profile`, {
         method: "PATCH", headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf},
-        body: JSON.stringify({model: industry.model, industry: industry.id, revision: profile.revision}),
+        body: JSON.stringify({model: industry.model, industry: industryId, revision: profile.revision}),
       });
       if (response.status === 409) {
         setTeamVersion(version => version + 1);
@@ -276,6 +314,7 @@ export function AgentTeam({organizationId, timezone, owner, getCsrfToken}: {
         throw new Error("Missing task ID");
       }
       pendingKeys.current.delete(operation.id);
+      remainingPolls.current = 30;
       setSubmission({id: data.id});
       refreshActivity();
       setApprovalVersion(version => version + 1);
@@ -306,7 +345,10 @@ export function AgentTeam({organizationId, timezone, owner, getCsrfToken}: {
       </dl>
       <form className="catalog-inline" onSubmit={updateProfile}>
         <label>Выбор отрасли
-          <Select key={team.data.profile.revision} name="industry" defaultValue={team.data.profile.industry} disabled={savingProfile}>
+          <Select key={team.data.profile.revision} name="industry" defaultValue={
+            team.data.profile.industry === "vehicle_service" && team.data.profile.model === "hybrid"
+              ? "vehicle_service_hybrid" : team.data.profile.industry
+          } disabled={savingProfile}>
             {industries.map(industry => <option key={industry.id} value={industry.id}>{industry.label}</option>)}
           </Select>
         </label>
@@ -346,13 +388,17 @@ export function AgentTeam({organizationId, timezone, owner, getCsrfToken}: {
         </form>}
         <p role="status" data-testid="agent-task-submission">
           {submitting ? "Отправляем задачу…" : submission && "id" in submission ? `Задача принята · ${submission.id}` : ""}
+          {submittedTask && ` · ${statusLabel(submittedTask.status)}`}
         </p>
         {submission && "error" in submission && <Alert tone="danger">{submission.error}</Alert>}
       </section>
       : <p>Управлять AI-командой и просматривать журнал может владелец магазина.</p>}
 
     <AgentApprovals organizationId={organizationId} timezone={timezone} canDecide={owner} getCsrfToken={getCsrfToken}
-      refreshVersion={approvalVersion} onDecision={refreshActivity}/>
+      refreshVersion={approvalVersion} onDecision={() => {
+        remainingPolls.current = 30;
+        refreshActivity();
+      }}/>
 
     {owner && <>
       <section aria-labelledby="agent-tasks-heading" data-testid="agent-tasks">
@@ -365,7 +411,7 @@ export function AgentTeam({organizationId, timezone, owner, getCsrfToken}: {
               {agentName(task.agent_id)} · {task.action}{" "}
               <StatusBadge tone={task.status === "completed" ? "positive" : task.status === "failed" ? "danger" :
                 task.status === "waiting_approval" ? "warning" : "neutral"}>
-                {Object.hasOwn(taskStatuses, task.status) ? taskStatuses[task.status] : task.status}
+                {statusLabel(task.status)}
               </StatusBadge>
               <small>{displayDate(task.created_at, timezone)}</small>
             </summary>
