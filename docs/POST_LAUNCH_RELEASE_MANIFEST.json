@@ -1,0 +1,34 @@
+{
+  "source_commit": "7a84b6a10d385edf68366feaab60f8f6a8101f5b",
+  "manifest_sha256": "949977f4997aab73e3e4b18e6a801e31510cab035d032d6613cdb9ba56a171d7",
+  "nginx_sha256": "59064da570080a5e13857eb692164340e8fbccaac67abf8346f11cd39c50eb07",
+  "postgres_active_volume": "aba-private-restore-cutover-20261123004447_database",
+  "database_schema": 31,
+  "backup_path": "/srv/aba/staging/backups/promotion-7a84b6a-20261123T085114Z.dump",
+  "backup_sha256": "f1a24e4eb929dd3fd2feed6d3d0a5d82baa60aa9932170dcca32f29eabfa5b43",
+  "recovery_volume": "aba-private-restore-promotion-7a84b6a-ansovi78",
+  "d2": "NOT PERFORMED",
+  "owner_risk_acceptance": true,
+  "images": {
+    "postgres": "sha256:0115267ab5a509022df9319c77be365cef335adb71556c75f60f5360ee247e71",
+    "proxy": "sha256:caf4e1e032a20f9c3c5e28fc7f25ffd768ad8677b4975c54193075997b3a97e3",
+    "mailpit": "sha256:23a2ef85bc50853ab3093645d1d64679afd8887e89da5e48a88940c172591a4e",
+    "api": "sha256:8cfb641d3fc0eb5960470d2d97ff9f53b4359c963b4b02a447fb44b7914f8b19",
+    "web": "sha256:8ec2b32aca41707932532c9d7f25659f17c4a56cafade3240935629ef670344d"
+  },
+  "previous_source_commit": "30f5343eb85e08ff7a2b464de0434bf0899a2a86",
+  "previous_manifest_sha256": "4fc9424d08c84f8259a5c7e1e633e8ad6e4818c207f3b59f37f65b6d5ae3bc3d",
+  "force_rls_tables": 62,
+  "healthy_services": [
+    "api",
+    "mailpit",
+    "postgres",
+    "proxy",
+    "web",
+    "worker"
+  ],
+  "public_chromium": "PASS",
+  "record_type": "deployment_receipt",
+  "manifest_archive_sha256": "59c3e945ce799e3f3e639e71828bbd621dc7b332f24ffc023a78b93fa8b43b44",
+  "web_image_archive_sha256": "f62ce529ed8c7c8dbdd937cbe24a3b00712a80e835c0004189f0fb176fa88f44"
+}

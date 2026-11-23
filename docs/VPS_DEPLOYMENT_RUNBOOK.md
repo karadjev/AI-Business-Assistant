@@ -132,3 +132,15 @@ Restore использует local admin для COPY через FORCE RLS и в�
 Rollback — возврат ранее проверенных immutable API/worker/web/proxy images **только при доказанной schema compatibility**. Сначала backup и review; GO action `rollback` должен содержать `schema_compatible:true`, project и SHA256 именно старого manifest. `control.py rollback` не запускает migrations down/restore и не меняет PG volume. Если schema несовместима — STOP, отдельный recovery plan, не автоматический rollback. Реальная rollback rehearsal в12А NOT RUN.
 
 До первого магазина остаются blockers из12А: E01/остаточные SQL evidence, Security review, private staging GO, Ubuntu verification и operational ownership. Этот runbook не разрешает public/live pilot.
+
+## Play2Go post-launch promotion · 23 November 2026
+
+The production package is immutable. Use the manifest SHA and image IDs in the [deployment receipt](POST_LAUNCH_RELEASE_MANIFEST.json). The receipt records the deployed state and does not replace the packaged manifest.
+
+1. Load the private active record through `/srv/aba/staging/active_release.py check`. Every Compose invocation for this project uses both the packaged Compose file and the recorded `active-volume.yml`, with the recorded env file, project and local Docker socket. Confirm the actual mount before any write. Capture readiness, queues and schema without printing configuration secrets.
+2. Capture the fresh dump and fingerprints from the same PostgreSQL snapshot. Check SHA-256 and the TOC. Restore only in an isolated networkless container using a separate volume. Require matching schema, tenant, task, approval and audit fingerprints.
+3. Recreate only the changed web service with `up -d --no-deps --no-build --pull never --wait web` using the pinned Compose arguments, then restart the internal proxy to re-resolve web. Keep PostgreSQL, API and worker running. Confirm all six images and health before writing the active record. Validate public Chromium, the candidate asset and the protected API.
+4. For rollback, read the saved private `old-record.json` and verify the old manifest SHA and the same active-volume override. Recreate only web with the old pinned Compose arguments and restart proxy with those arguments. Keep the current edge rules if the fault is limited to the web image. For an approval-route edge fault, the saved `before-approval-edge.conf` retains the demo login fix. Run `nginx -t` before reload. Update the private active record with the edge SHA actually installed. Recheck six images, volume, schema, internal readiness and public login.
+5. Keep the fresh backup, its SHA-256 sidecar and the isolated rehearsal volume for recovery evidence. The image-only procedure leaves schema 31 and the active data volume in place. No production migration, restore or volume deletion is part of this procedure.
+
+[Private evidence locations and verification results](POST_LAUNCH_RELEASE_EVIDENCE.md)
