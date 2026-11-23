@@ -29,6 +29,7 @@ x-runtime: &runtime
     WHATSAPP_ENCRYPTION_KEY_FILE: /run/secrets/whatsapp_key
     PUBLIC_ORIGIN: ${ABA_PUBLIC_ORIGIN:?Set HTTPS origin}
     SMTP_ADDR: mailpit:1025
+    ABA_DISABLE_EMAIL_ACTIONS: ${ABA_DISABLE_EMAIL_ACTIONS:-false}
     DB_MAX_CONNECTIONS: '5'
     LLM_PROVIDER: mock
     LLM_ENABLE_LIVE: 'false'
@@ -122,6 +123,7 @@ services:
     user: '10001:10001'
     environment:
       API_BASE_URL: http://api:8080
+      ABA_DISABLE_EMAIL_ACTIONS: ${ABA_DISABLE_EMAIL_ACTIONS:-false}
       NEXT_TELEMETRY_DISABLED: '1'
     networks: [private]
     dns: [127.0.0.1]

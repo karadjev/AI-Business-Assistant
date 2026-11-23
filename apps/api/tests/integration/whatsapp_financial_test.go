@@ -78,8 +78,18 @@ func testWhatsAppFinancial(t *testing.T, d *db.Database, admin *pgx.Conn, ctx co
 	conv, customer := auth.UUID(), auth.UUID()
 	execSQL(`INSERT INTO platform.conversations(id,organization_id,customer_id,created_by,channel,control_mode,expires_at) VALUES($1,$2,$3,$4,'whatsapp','human',now()+interval '1 day')`, conv, org.ID, customer, uid)
 	execSQL(`INSERT INTO platform.channel_principals(id,organization_id,integration_id,external_user_id,conversation_id,window_until,recipient_region) VALUES($1,$2,$3,'700',$4,now()+interval '1 hour','ZZ')`, customer, org.ID, integration, conv)
-	if err := migrate.Run(ctx, testDSN(t, "ABA_TEST_MIGRATION_DATABASE_URL", "aba_migrator"), "down"); err == nil {
+	migrationDSN := testDSN(t, "ABA_TEST_MIGRATION_DATABASE_URL", "aba_migrator")
+	if err := migrate.Run(ctx, migrationDSN, "down"); err != nil {
+		t.Fatalf("password-reset migration rollback: %v", err)
+	}
+	if err := migrate.Run(ctx, migrationDSN, "down"); err != nil {
+		t.Fatalf("additive vehicle-service migration rollback: %v", err)
+	}
+	if err := migrate.Run(ctx, migrationDSN, "down"); err == nil {
 		t.Fatal("rollback discarded verified recipient metadata")
+	}
+	if err := migrate.Run(ctx, migrationDSN, "up"); err != nil {
+		t.Fatalf("restore latest schema after rollback refusal: %v", err)
 	}
 	c := whatsapp.Config{OrganizationID: org.ID, IntegrationID: integration, AppID: "991", BusinessAccountID: "992", PhoneNumberID: "993", GraphVersion: "v99.0", AccessToken: credentials.AccessToken, AppSecret: credentials.AppSecret, VerifyToken: credentials.VerifyToken, AllowedUsers: map[string]bool{"700": true}, Window: 24 * time.Hour}
 	execSQL(`INSERT INTO platform.wa_budgets(organization_id) VALUES($1)`, org.ID)

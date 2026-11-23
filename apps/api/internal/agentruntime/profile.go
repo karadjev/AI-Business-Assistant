@@ -25,7 +25,7 @@ var industryModels = map[string]string{
 }
 
 func (p BusinessProfile) valid() bool {
-	return p.Model != "" && industryModels[p.Industry] == p.Model && p.Revision > 0
+	return p.Model != "" && p.Revision > 0 && (industryModels[p.Industry] == p.Model || (p.Industry == "vehicle_service" && p.Model == "hybrid"))
 }
 
 func (p BusinessProfile) catalogAllowed() bool {

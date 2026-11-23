@@ -14,6 +14,7 @@ import (
 type emailPayload struct {
 	To   string
 	Link string
+	Kind string
 }
 
 func (s *Service) DeliverOne(ctx context.Context) (bool, error) {
@@ -66,7 +67,11 @@ func send(ctx context.Context, addr string, msg emailPayload) error {
 	if e != nil {
 		return e
 	}
-	_, e = fmt.Fprintf(writer, "From: AI Business Assistant <no-reply@ai-business-assistant.test>\r\nTo: %s\r\nSubject: Verify your email\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\nConfirm your email (link expires):\r\n%s\r\n", msg.To, msg.Link)
+	subject, body := "Verify your email", "Confirm your email (link expires):\r\n"
+	if msg.Kind == "password_reset" {
+		subject, body = "Reset your password", "Reset your password using this one-time link (expires shortly):\r\n"
+	}
+	_, e = fmt.Fprintf(writer, "From: AI Business Assistant <no-reply@ai-business-assistant.test>\r\nTo: %s\r\nSubject: %s\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s%s\r\n", msg.To, subject, body, msg.Link)
 	if e != nil {
 		return e
 	}

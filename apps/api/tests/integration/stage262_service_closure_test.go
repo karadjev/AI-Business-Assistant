@@ -23,7 +23,7 @@ func testStage262ServiceClosure(t *testing.T, d *db.Database, admin *pgx.Conn, c
 	svc := agentruntime.Service{Pool: d.Pool, Key: bytes.Repeat([]byte{110}, 32)}
 	identity := auth.New(d.Pool, config.Auth{SessionTTL: time.Hour, IdleTTL: time.Hour})
 	owner := seedStage23Owner(t, d, admin, ctx, identity, 87)
-	if err := svc.UpdateProfile(ctx, owner.tenant, "hybrid", "mixed_nonfood", 1); err != nil {
+	if err := svc.UpdateProfile(ctx, owner.tenant, "hybrid", "vehicle_service", 1); err != nil {
 		t.Fatal(err)
 	}
 	f := stage26Configure(t, d, ctx, owner, 968)

@@ -19,7 +19,7 @@ sys.dont_write_bytecode = True
 from common import command, validate
 
 SERVICES = ('postgres', 'mailpit', 'api', 'worker', 'web', 'proxy')
-EXPECTED_FORCED_RLS_TABLES = {16: 45, 29: 62}
+EXPECTED_FORCED_RLS_TABLES = {16: 45, 29: 62, 30: 62, 31: 62}
 HERE = Path(__file__).resolve().parent
 
 def digest(path):
@@ -152,7 +152,7 @@ def volume_name(cfg, project):
 def existing_volume(name):
     return invoke(['docker','volume','ls','--filter','name=^'+re.escape(name)+'$','--format','{{.Name}}']).split()
 
-def containers(base):
+def containers(base, expected_images=None):
     raw = invoke(base + ['ps','--all','--format','json']).strip()
     rows = json.loads(raw) if raw.startswith('[') else [json.loads(line) for line in raw.splitlines()]
     found = {}
@@ -166,6 +166,12 @@ def containers(base):
         if row.get('Health') != 'healthy' and (service != 'mailpit' or row.get('Health')):
             raise ValueError('runtime container is not healthy')
         found[service] = {'state':'running','health':row.get('Health') or 'not configured'}
+        if expected_images is not None:
+            image = invoke(['docker', 'inspect', '--type', 'container', '--format', '{{.Image}}', row['ID']]).strip()
+            expected = expected_images['api' if service == 'worker' else service]
+            if image != expected:
+                raise ValueError(f'{service} image does not match the release manifest')
+            found[service]['image'] = image
     if set(found) != set(SERVICES):
         raise ValueError('runtime services incomplete')
     return found
@@ -242,7 +248,7 @@ def execute(a, report):
         step('postgres_start',lambda:invoke(base+['up','-d','--pull','never','--wait','--wait-timeout','120','postgres','mailpit'],timeout=150))
         step('migration',lambda:invoke(base+['run','--rm','--no-deps','migrate'],timeout=300))
         step('runtime_start',lambda:invoke(base+['up','-d','--no-deps','--pull','never','--wait','--wait-timeout','180','api','worker','web','proxy'],timeout=210))
-    report['containers']=step('runtime_health',lambda:containers(base))
+    report['containers']=step('runtime_health',lambda:containers(base, manifest['images']))
     report['database']=step('database_safety',lambda:database(base,manifest['database_schema']))
     report['smoke']=step('https_auth_smoke',lambda:smoke(base,cfg['services']['api']['environment']['PUBLIC_ORIGIN'],a.tls_ca))
     # Project-scoped metrics only; absence does not become a zero-usage claim.

@@ -46,6 +46,9 @@ class CompilerAdmissionTests(unittest.TestCase):
             binary.chmod(0o444)
             with self.assertRaisesRegex(ValueError, 'binary must be executable'):
                 package.static_binary(binary)
+            binary.chmod(0o750)
+            with self.assertRaisesRegex(ValueError, 'binary must be executable'):
+                package.static_binary(binary)
             binary.chmod(0o555)
             package.static_binary(binary)
 

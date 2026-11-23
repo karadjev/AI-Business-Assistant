@@ -12,7 +12,7 @@ class DeploymentTest(unittest.TestCase):
     def setUp(self):
         temp=tempfile.TemporaryDirectory(); self.addCleanup(temp.cleanup)
         self.root=Path(temp.name).resolve()
-        self.manifest={'schema':1,'database_schema':16}
+        self.manifest={'schema':1,'database_schema':16,'images':{}}
         (self.root/'manifest.json').write_text(json.dumps(self.manifest))
         self.a=SimpleNamespace(action='install',release=self.root,env=self.root/'env',
             storage_root=self.root,backup_dir=self.root,tls_ca=self.root/'ca',
@@ -120,7 +120,7 @@ class DeploymentTest(unittest.TestCase):
                 with self.assertRaises(ValueError):deploy.containers(['compose'])
     def test_database_rls_and_runtime_role_fail_closed(self):
         anonymous = {'anonymous_organizations': 0}
-        for schema, forced in ((16, 45), (29, 62)):
+        for schema, forced in ((16, 45), (29, 62), (30, 62), (31, 62)):
             valid = {'schema': schema, 'forced': forced, 'unforced': 0, 'restricted': True}
             with patch('deploy.invoke', return_value=json.dumps(valid) + '\n' + json.dumps(anonymous)):
                 self.assertEqual(deploy.database(['compose'], schema), [valid, anonymous])
@@ -130,8 +130,24 @@ class DeploymentTest(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         deploy.database(['compose'], schema)
         with patch('deploy.invoke') as invoke, self.assertRaises(ValueError):
-            deploy.database(['compose'], 30)
+            deploy.database(['compose'], 32)
         invoke.assert_not_called()
+    def test_healthy_worker_must_run_manifest_api_image(self):
+        images = {s: 'sha256:' + str(i) * 64 for i, s in enumerate(deploy.SERVICES) if s != 'worker'}
+        rows = [{'ID': s, 'Service': s, 'State': 'running', 'Health': 'healthy'} for s in deploy.SERVICES]
+        worker_image = images['api']
+
+        def invoke(args):
+            if args[0] == 'compose':
+                return json.dumps(rows)
+            service = args[-1]
+            return worker_image if service == 'worker' else images[service]
+
+        with patch('deploy.invoke', side_effect=invoke):
+            self.assertEqual(deploy.containers(['compose'], images)['worker']['image'], images['api'])
+            worker_image = 'sha256:' + 'f' * 64
+            with self.assertRaisesRegex(ValueError, 'worker image'):
+                deploy.containers(['compose'], images)
     def test_mailpit_unhealthy_refused_and_internal_expose_allowed(self):
         rows=[{'Service':s,'State':'running','Health':'healthy','Publishers':[]} for s in deploy.SERVICES]
         rows[0]['Publishers']=[{'TargetPort':5432,'PublishedPort':0}]

@@ -372,6 +372,24 @@
         ]
       }
     },
+    "/api/v1/auth/password-reset": {
+      "post": {
+        "operationId": "requestPasswordReset",
+        "summary": "Запросить восстановление пароля без раскрытия существования аккаунта",
+        "security": [],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["email"], "properties": {"email": {"type": "string", "format": "email", "maxLength": 254}}}}}},
+        "responses": {"202": {"description": "Общий ответ принят"}}
+      }
+    },
+    "/api/v1/auth/password-reset/confirm": {
+      "post": {
+        "operationId": "confirmPasswordReset",
+        "summary": "Одноразово сменить пароль и отозвать существующие сессии",
+        "security": [],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["token", "password"], "properties": {"token": {"type": "string", "minLength": 43, "maxLength": 43}, "password": {"type": "string", "minLength": 12, "maxLength": 128}}}}}},
+        "responses": {"204": {"description": "Пароль изменён"}}
+      }
+    },
     "/api/v1/auth/verify-email": {
       "post": {
         "operationId": "verifyEmail",

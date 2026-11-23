@@ -13,11 +13,19 @@ type Auth struct {
 	CatalogRetentionKey                  []byte
 	SMTPAddr                             string
 	Secure                               bool
+	EmailActionsDisabled                 bool
 	SessionTTL, IdleTTL, VerificationTTL time.Duration
 }
 
 func LoadAuth(get func(string) string, env string) (Auth, error) {
 	c := Auth{Origin: value(get, "PUBLIC_ORIGIN", "http://127.0.0.1:3000"), SMTPAddr: value(get, "SMTP_ADDR", "127.0.0.1:1025"), Secure: requiresTLS(env), SessionTTL: 7 * 24 * time.Hour, IdleTTL: 24 * time.Hour, VerificationTTL: 24 * time.Hour}
+	switch get("ABA_DISABLE_EMAIL_ACTIONS") {
+	case "", "false":
+	case "true":
+		c.EmailActionsDisabled = true
+	default:
+		return Auth{}, errors.New("ABA_DISABLE_EMAIL_ACTIONS must be true or false")
+	}
 	u, e := url.Parse(c.Origin)
 	if e != nil || u.Host == "" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil || (u.Scheme != "http" && u.Scheme != "https") || (c.Secure && u.Scheme != "https") {
 		return Auth{}, errors.New("PUBLIC_ORIGIN is invalid")

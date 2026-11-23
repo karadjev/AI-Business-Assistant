@@ -77,6 +77,13 @@ func identityRoutes(mux *http.ServeMux, s *auth.Service, chat *conversations.Ser
 				writeError(w, r, 403, "CSRF_REJECTED", "Источник запроса не разрешён")
 				return
 			}
+			if s.Config.EmailActionsDisabled {
+				switch path {
+				case "/api/v1/auth/register", "/api/v1/auth/resend-verification", "/api/v1/auth/verify-email", "/api/v1/auth/password-reset", "/api/v1/auth/password-reset/confirm":
+					writeError(w, r, 403, "EMAIL_ACTIONS_DISABLED", "Регистрация и восстановление доступа временно недоступны")
+					return
+				}
+			}
 			var session auth.Session
 			if protected {
 				var e error
@@ -135,6 +142,33 @@ func identityRoutes(mux *http.ServeMux, s *auth.Service, chat *conversations.Ser
 			return
 		}
 		writeJSON(w, 202, message)
+	})
+	register("/api/v1/auth/password-reset", "POST", false, func(w http.ResponseWriter, r *http.Request, _ auth.Session) {
+		var in struct {
+			Email string `json:"email"`
+		}
+		if !decode(w, r, &in) || !publicLimit(w, r, "password-reset", in.Email, 3) {
+			return
+		}
+		if e := s.RequestPasswordReset(r.Context(), in.Email); e != nil {
+			fail(w, r, e)
+			return
+		}
+		writeJSON(w, 202, map[string]string{"message": "Если аккаунт существует и email подтверждён, письмо для восстановления будет отправлено."})
+	})
+	register("/api/v1/auth/password-reset/confirm", "POST", false, func(w http.ResponseWriter, r *http.Request, _ auth.Session) {
+		var in struct {
+			Token    string `json:"token"`
+			Password string `json:"password"`
+		}
+		if !decode(w, r, &in) || !publicLimit(w, r, "password-reset-confirm", in.Token, 5) {
+			return
+		}
+		if e := s.ResetPassword(r.Context(), in.Token, in.Password); e != nil {
+			fail(w, r, e)
+			return
+		}
+		w.WriteHeader(204)
 	})
 	register("/api/v1/auth/verify-email", "POST", false, func(w http.ResponseWriter, r *http.Request, _ auth.Session) {
 		var in struct {

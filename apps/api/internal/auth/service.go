@@ -164,6 +164,78 @@ func (s *Service) Verify(ctx context.Context, token string) error {
 	}
 	return nil
 }
+
+// RequestPasswordReset always succeeds for validly shaped addresses so callers
+// cannot discover whether an account exists. Only verified accounts receive mail.
+func (s *Service) RequestPasswordReset(ctx context.Context, email string) error {
+	normalized, err := Email(email)
+	if err != nil {
+		return err
+	}
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return Unavailable()
+	}
+	defer tx.Rollback(ctx)
+	var id string
+	err = tx.QueryRow(ctx, `SELECT id FROM platform.users WHERE email=$1 AND email_verified_at IS NOT NULL FOR UPDATE`, normalized).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return Unavailable()
+	}
+	if _, err = tx.Exec(ctx, `UPDATE platform.password_reset_tokens SET consumed_at=now() WHERE user_id=$1 AND consumed_at IS NULL`, id); err != nil {
+		return Unavailable()
+	}
+	token := Token()
+	if _, err = tx.Exec(ctx, `INSERT INTO platform.password_reset_tokens(id,user_id,token_hash,expires_at) VALUES($1,$2,$3,$4)`, UUID(), id, Hash(token), time.Now().Add(30*time.Minute)); err != nil {
+		return Unavailable()
+	}
+	plain, _ := json.Marshal(emailPayload{To: normalized, Link: s.Config.Origin + "/reset-password#token=" + token, Kind: "password_reset"})
+	payload, err := encrypt(s.Config.EmailKey, plain)
+	if err != nil {
+		return Unavailable()
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO platform.email_outbox(id,payload) VALUES($1,$2)`, UUID(), payload); err != nil {
+		return Unavailable()
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return Unavailable()
+	}
+	return nil
+}
+
+// ResetPassword consumes a one-time token, changes the password and revokes all
+// active sessions in one transaction.
+func (s *Service) ResetPassword(ctx context.Context, token, password string) error {
+	if len(token) != 43 || !PasswordValid(password) {
+		return Failure(422, "INVALID_RESET", "Ссылка недействительна или истекла")
+	}
+	if err := s.acquire(ctx); err != nil {
+		return err
+	}
+	hash := PasswordHash(password)
+	<-s.slots
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return Unavailable()
+	}
+	defer tx.Rollback(ctx)
+	var completed bool
+	err = tx.QueryRow(ctx, `SELECT platform.complete_password_reset($1,$2)`, Hash(token), hash).Scan(&completed)
+	if err != nil {
+		return Unavailable()
+	}
+	if !completed {
+		return Failure(422, "INVALID_RESET", "Ссылка недействительна или истекла")
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return Unavailable()
+	}
+	return nil
+}
+
 func (s *Service) Login(ctx context.Context, email, password, previous string) (User, string, string, error) {
 	normalized, e := Email(email)
 	if e != nil || !PasswordValid(password) {

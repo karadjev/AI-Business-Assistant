@@ -35,7 +35,7 @@ def image(ref):
 def static_binary(path):
     if path.is_symlink() or not path.is_file():
         raise ValueError('binary must be a regular file')
-    if path.stat().st_mode & 0o111 == 0:
+    if path.stat().st_mode & 0o001 == 0:
         raise ValueError('binary must be executable by the non-root runtime user')
     b = path.read_bytes()
     if len(b) < 64 or b[:6] != b'\x7fELF\x02\x01' or struct.unpack_from('<H', b, 18)[0] != 62:
@@ -146,7 +146,7 @@ fs.cpSync('/input','/output/web',{recursive:true,filter:f=>{
                 hashes[str(file.relative_to(a.output))] = hashlib.sha256(file.read_bytes()).hexdigest()
     proof = json.loads((context / 'web' / 'web' / '.next' / 'aba-build-proof.json').read_text())
     manifest = {'schema': 1, 'release': a.release, 'platform': 'linux/amd64', 'images': images,
-                'web_proof': proof, 'files': hashes, 'database_schema': 29,
+                'web_proof': proof, 'files': hashes, 'database_schema': 31,
                 'runtime_security_admission_version': 2,
                 'status': 'PACKAGE_ONLY_NOT_DEPLOYMENT_GO', 'security': 'CONDITIONAL', 'e01': 'OPEN'}
     (a.output / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')

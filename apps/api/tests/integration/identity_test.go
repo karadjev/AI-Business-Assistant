@@ -86,7 +86,7 @@ func testIdentity(t *testing.T, database *db.Database, admin *pgx.Conn, ctx cont
 			t.Fatal(e)
 		}
 	}
-	mailToken := func(email string) string {
+	mailToken := func(email, linkPath string) string {
 		t.Helper()
 		base := os.Getenv("TEST_MAILPIT_URL")
 		if base == "" {
@@ -119,6 +119,9 @@ func testIdentity(t *testing.T, database *db.Database, admin *pgx.Conn, ctx cont
 					if e != nil {
 						t.Fatal(e)
 					}
+					if !strings.Contains(detail.Text, linkPath) {
+						continue
+					}
 					match := regexp.MustCompile(`token=([A-Za-z0-9_-]{43})`).FindStringSubmatch(detail.Text)
 					if len(match) == 2 {
 						return match[1]
@@ -129,7 +132,7 @@ func testIdentity(t *testing.T, database *db.Database, admin *pgx.Conn, ctx cont
 		t.Fatal("verification email missing")
 		return ""
 	}
-	tokenA, tokenB := mailToken(emailA), mailToken(emailB)
+	tokenA, tokenB := mailToken(emailA, "verify-email"), mailToken(emailB, "verify-email")
 	expect(request(a, "POST", "/api/v1/auth/login", map[string]string{"email": emailA, "password": password}, true, false), 401)
 	expect(request(a, "POST", "/api/v1/auth/verify-email", map[string]string{"token": tokenA}, true, false), 204)
 	expect(request(a, "POST", "/api/v1/auth/verify-email", map[string]string{"token": tokenA}, true, false), 422)
@@ -141,7 +144,7 @@ func testIdentity(t *testing.T, database *db.Database, admin *pgx.Conn, ctx cont
 	if _, e := s.DeliverOne(ctx); e != nil {
 		t.Fatal(e)
 	}
-	tokenB = mailToken(emailB)
+	tokenB = mailToken(emailB, "verify-email")
 	expect(request(b, "POST", "/api/v1/auth/verify-email", map[string]string{"token": tokenB}, true, false), 204)
 	expect(request(a, "POST", "/api/v1/auth/login", map[string]string{"email": emailA, "password": "Wrong-Password-123!"}, true, false), 401)
 	login := func(c *client, email string) {
@@ -391,4 +394,37 @@ func testIdentity(t *testing.T, database *db.Database, admin *pgx.Conn, ctx cont
 		t.Fatal(e)
 	}
 	expect(request(b, "GET", "/api/v1/auth/me", nil, false, false), 401)
+	activeLogin := request(b, "POST", "/api/v1/auth/login", map[string]string{"email": emailB, "password": password}, true, false)
+	expect(activeLogin, 200)
+	b.cookies = activeLogin.Result().Cookies()
+	expect(request(b, "GET", "/api/v1/auth/me", nil, false, false), 200)
+	unknownReset := request(a, "POST", "/api/v1/auth/password-reset", map[string]string{"email": "unknown-reset@example.test"}, true, false)
+	expect(unknownReset, 202)
+	knownReset := request(a, "POST", "/api/v1/auth/password-reset", map[string]string{"email": emailB}, true, false)
+	expect(knownReset, 202)
+	if knownReset.Body.String() != unknownReset.Body.String() {
+		t.Fatal("password reset permits account enumeration")
+	}
+	for _, status := range []int{202, 202, 429} {
+		expect(request(a, "POST", "/api/v1/auth/password-reset", map[string]string{"email": "unknown-reset@example.test"}, true, false), status)
+	}
+	if _, e := s.DeliverOne(ctx); e != nil {
+		t.Fatal(e)
+	}
+	resetToken := mailToken(emailB, "reset-password")
+	newPassword := "Synthetic-Changed-Password-456!"
+	if _, e := admin.Exec(ctx, `UPDATE platform.password_reset_tokens SET expires_at=now()-interval '1 second' WHERE token_hash=$1`, auth.Hash(resetToken)); e != nil {
+		t.Fatal(e)
+	}
+	expect(request(a, "POST", "/api/v1/auth/password-reset/confirm", map[string]string{"token": resetToken, "password": newPassword}, true, false), 422)
+	expect(request(b, "GET", "/api/v1/auth/me", nil, false, false), 200)
+	expect(request(a, "POST", "/api/v1/auth/password-reset", map[string]string{"email": emailB}, true, false), 202)
+	if _, e := s.DeliverOne(ctx); e != nil {
+		t.Fatal(e)
+	}
+	resetToken = mailToken(emailB, "reset-password")
+	expect(request(a, "POST", "/api/v1/auth/password-reset/confirm", map[string]string{"token": resetToken, "password": newPassword}, true, false), 204)
+	expect(request(a, "POST", "/api/v1/auth/password-reset/confirm", map[string]string{"token": resetToken, "password": password}, true, false), 422)
+	expect(request(b, "GET", "/api/v1/auth/me", nil, false, false), 401)
+	expect(request(a, "POST", "/api/v1/auth/login", map[string]string{"email": emailB, "password": newPassword}, true, false), 200)
 }

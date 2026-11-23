@@ -63,7 +63,7 @@ func TestDatabaseAndMigrations(t *testing.T) {
 	if e = migrate.Run(ctx, migrationDSN, "up"); e != nil {
 		t.Fatal(e)
 	}
-	t.Run("instagram-schema-up", func(t *testing.T) { testInstagramSchemaStage22(t, conn, ctx, 29) })
+	t.Run("instagram-schema-up", func(t *testing.T) { testInstagramSchemaStage22(t, conn, ctx, 31) })
 	if e = migrate.Run(ctx, migrationDSN, "up"); e != nil {
 		t.Fatal("repeat up failed", e)
 	}
@@ -87,6 +87,20 @@ func TestDatabaseAndMigrations(t *testing.T) {
 	}
 	if _, e = database.Pool.Exec(ctx, `CREATE TABLE platform.forbidden (id integer)`); e == nil {
 		t.Fatal("runtime can perform DDL")
+	}
+	if e = migrate.Run(ctx, migrationDSN, "down"); e != nil {
+		t.Fatal(e)
+	}
+	t.Run("vehicle-service-hybrid-schema-down", func(t *testing.T) {
+		var version int
+		if err := conn.QueryRow(ctx, "SELECT version FROM platform.service_metadata WHERE singleton").Scan(&version); err != nil || version != 30 {
+			t.Fatalf("vehicle service hybrid rollback: version=%d err=%v", version, err)
+		}
+	})
+	// The newly added password-reset migration sits above the vehicle-service
+	// checkpoint and is reverted separately before testing migration 00030.
+	if e = migrate.Run(ctx, migrationDSN, "down"); e != nil {
+		t.Fatal(e)
 	}
 	if e = migrate.Run(ctx, migrationDSN, "down"); e != nil {
 		t.Fatal(e)
@@ -228,7 +242,7 @@ func TestDatabaseAndMigrations(t *testing.T) {
 	if e = migrate.Run(ctx, migrationDSN, "up"); e != nil {
 		t.Fatal(e)
 	}
-	t.Run("instagram-schema-reapply", func(t *testing.T) { testInstagramSchemaStage22(t, conn, ctx, 29) })
+	t.Run("instagram-schema-reapply", func(t *testing.T) { testInstagramSchemaStage22(t, conn, ctx, 31) })
 	testIdentity(t, database, conn, ctx)
 	testCatalog(t, database, conn, ctx)
 	testStage5(t, database, conn, ctx)
@@ -256,8 +270,19 @@ func TestDatabaseAndMigrations(t *testing.T) {
 	if e = conn.QueryRow(ctx, snapshot).Scan(&before); e != nil {
 		t.Fatal(e)
 	}
+	// Remove password-reset schema 31 separately before exercising the existing
+	// vehicle-service schema rollback and populated draft-history refusal.
+	if e = migrate.Run(ctx, migrationDSN, "down"); e != nil {
+		t.Fatalf("password-reset schema rollback: %v", e)
+	}
+	if e = migrate.Run(ctx, migrationDSN, "down"); e != nil {
+		t.Fatalf("additive vehicle-service schema rollback: %v", e)
+	}
 	if e = migrate.Run(ctx, migrationDSN, "down"); e == nil {
 		t.Fatal("populated draft history rollback allowed")
+	}
+	if e = migrate.Run(ctx, migrationDSN, "up"); e != nil {
+		t.Fatalf("restore latest schema after rollback refusal: %v", e)
 	}
 	if e = conn.QueryRow(ctx, snapshot).Scan(&after); e != nil || before != after {
 		t.Fatal("rollback changed catalog", e)
@@ -266,8 +291,11 @@ func TestDatabaseAndMigrations(t *testing.T) {
 	t.Run("stage262-industry", func(t *testing.T) { testStage262Industry(t, database, conn, ctx) })
 	t.Run("stage262-service-closure", func(t *testing.T) { testStage262ServiceClosure(t, database, conn, ctx) })
 	testAudit8A(t, database, conn, ctx)
+	if err := migrate.Run(ctx, migrationDSN, "down"); err != nil {
+		t.Fatalf("password-reset rollback: %v", err)
+	}
 	if err := migrate.Run(ctx, migrationDSN, "down"); err == nil {
-		t.Fatal("nonempty identity rollback should refuse data loss")
+		t.Fatal("vehicle-service capability rollback should refuse when profile data exists")
 	}
 	unreachable, e := db.Open(ctx, "postgresql://aba_app:synthetic@127.0.0.1:1/aba_test?sslmode=disable", 1, 100*time.Millisecond)
 	if e != nil {

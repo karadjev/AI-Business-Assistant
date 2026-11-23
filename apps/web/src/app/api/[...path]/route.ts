@@ -58,6 +58,7 @@ import {apiBaseURL} from "@/lib/config";
 const allowed=new Map([
  ["v1/auth/register",["POST"]],["v1/auth/login",["POST"]],["v1/auth/logout",["POST"]],
  ["v1/auth/verify-email",["POST"]],["v1/auth/resend-verification",["POST"]],["v1/auth/me",["GET"]],
+ ["v1/auth/password-reset",["POST"]],["v1/auth/password-reset/confirm",["POST"]],
  ["v1/organizations",["GET","POST"]],["v1/organizations/test",["POST"]],
 ]);
 export const dynamic="force-dynamic";
