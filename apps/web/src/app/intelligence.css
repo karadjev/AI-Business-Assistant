@@ -13,13 +13,52 @@
   padding-block:clamp(52px,7vw,100px);
   gap:clamp(28px,4.4vw,64px);
 }
-.landing .hero h1 {font-size:clamp(38px,4.4vw,62px);line-height:1.06;letter-spacing:-.05em;margin-block:20px}
+.landing > .hero {
+  --accent: #a7ceff;
+  --accent-hover: #c3dfff;
+  --on-accent: #102345;
+  position: relative;
+  isolation: isolate;
+  align-self: center;
+  padding-block: clamp(28px, 4vw, 58px);
+  color: #fff;
+}
+
+.landing > .hero::before,
+.landing > .hero::after {
+  position: absolute;
+  inset: 0 -16px;
+  z-index: -1;
+  content: "";
+  pointer-events: none;
+  border-radius: 22px;
+}
+
+.landing > .hero::before {
+  background: radial-gradient(ellipse at 86% 22%, #1b3d6c, transparent 72%),
+    linear-gradient(140deg, #101e38, #0a152a 75%);
+}
+
+.landing > .hero::after {
+  background-image: linear-gradient(#a7ceff26 1px, transparent 1px),
+    linear-gradient(90deg, #a7ceff26 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: radial-gradient(ellipse at 90% 37%, #000, transparent 77%);
+}
+
+.landing .hero h1 {
+  margin-block: 20px;
+  color: #fff;
+  font-size: clamp(35px, 4vw, 55px);
+  line-height: 1.06;
+  letter-spacing: -.05em;
+}
+.landing .hero h1 span {color: var(--accent)}
 .hero .eyebrow,.flow-heading .eyebrow {color:var(--accent);font-size:12px;font-weight:700;line-height:1.5;letter-spacing:.1em}
-.landing .hero-copy {max-width:54ch;font-size:clamp(16px,1.4vw,18px);line-height:1.65}
-.landing .hero-actions {flex-wrap:wrap;gap:10px;margin-block:26px 16px}
-.hero-actions .button {display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;padding:10px 14px}
+.landing .hero-copy {color:#c4d7ee;font-size:clamp(16px,1.4vw,18px);line-height:1.65}
+.landing .hero-actions {margin-block:26px 0}
+.landing .hero-actions .button {display:inline-flex;align-items:center;justify-content:center;gap:12px;min-height:56px;padding:12px 24px;font-size:16px}
 .hero-actions .button svg {width:16px;height:16px;flex:none}
-.landing .hero .small {max-width:60ch;font-size:13px;line-height:1.55}
 .landing .flow-card {
   padding:clamp(18px,2.25vw,32px);
   background:radial-gradient(ellipse at 94% 0%, color-mix(in srgb,var(--accent) 16%,transparent),transparent 68%),linear-gradient(155deg,var(--surface),color-mix(in srgb,var(--surface) 92%,var(--soft)));
@@ -62,7 +101,7 @@
 }
 @media (max-width:480px) {
   .landing .hero h1 {font-size:clamp(34px,10vw,42px)}
-  .landing .hero-actions .button {width:auto;flex:1 1 max-content}
+  .landing .hero-actions .button {width:auto}
   .landing .flow-step {grid-template-columns:36px minmax(0,1fr);gap:12px}
   .landing .step-number {width:36px;height:36px}
 }

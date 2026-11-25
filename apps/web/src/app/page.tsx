@@ -20,15 +20,12 @@ export default function Home() {
   return (
     <main id="main" tabIndex={-1} className="landing">
       <section className="hero">
-        <p className="eyebrow">Для малого бизнеса</p>
-        <h1>Ближе к клиентам.<br/><span>С помощью ИИ.</span></h1>
-        <p className="hero-copy">Семь AI-агентов помогают разбирать обращения, вести каталог и анализировать бизнес. Работайте с результатами и согласовывайте решения в одном кабинете.</p>
+        <p className="eyebrow">ИНТЕЛЛЕКТ ДЛЯ БИЗНЕСА</p>
+        <h1>Управляйте бизнесом.<br/><span>С помощью ИИ.</span></h1>
+        <p className="hero-copy">Семь AI-специалистов в единой платформе.</p>
         <div className="hero-actions">
-          <Link prefetch={false} className="button primary" href="/register">Создать аккаунт <Icon name="arrow"/></Link>
-          <Link prefetch={false} className="button secondary" href="/dashboard/demo">Посмотреть демо</Link>
-          <Link prefetch={false} className="button secondary" href="/status">Проверить систему</Link>
+          <Link prefetch={false} className="button primary" href="/register">Начать работу <Icon name="arrow"/></Link>
         </div>
-        <p className="small muted">Демо использует тестовые данные. Сообщения клиентам из демо не отправляются.</p>
       </section>
       <section className="flow-card" aria-labelledby="flow-title">
         <div className="flow-heading">
