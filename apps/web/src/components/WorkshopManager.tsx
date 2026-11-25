@@ -17,8 +17,8 @@ const taskNames: Record<string,string> = {
 };
 const statuses: Record<string,string> = {queued:"В очереди",pending:"Ожидает предыдущий этап",running:"Выполняется",
   waiting_approval:"Нужно согласование",completed:"Завершено",failed:"Ошибка",cancelled:"Отменено",expired:"Срок истёк"};
-export const agentNames: Record<string,string> = {business_manager:"AI-управляющий",customer:"Customer",product_inventory:"Product & Inventory",
-  sales:"Sales", finance:"Finance",analytics:"Analytics",marketing:"Marketing"};
+export const agentNames: Record<string,string> = {business_manager:"Business Manager",customer:"Поддержка клиентов",product_inventory:"Каталог и остатки",
+  sales:"Продажи",finance:"Финансы",analytics:"Аналитика",marketing:"Маркетинг"};
 
 export function ManagerTaskList({tasks}: {tasks:ManagerTask[]}) {
   return <section className="panel" id="workshop-team">
@@ -36,6 +36,8 @@ export function WorkshopManager({base,tasks,requests,onQueued}: {base:string;tas
   const [busy,setBusy] = useState(false);
   const [loaded,setLoaded] = useState(false);
   const [error,setError] = useState("");
+  const submitting = useRef(false);
+  const composer = useRef<HTMLTextAreaElement>(null);
   const retry = useRef<{fingerprint:string;id:string}|null>(null);
   const readHistory = useCallback(async (signal=AbortSignal.timeout(8000)) => {
     const response=await fetch(base,{cache:"no-store",signal});
@@ -60,13 +62,14 @@ export function WorkshopManager({base,tasks,requests,onQueued}: {base:string;tas
 
   async function submit(event:FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy) return;
+    if (submitting.current) return;
     const form=event.currentTarget;
     const values=new FormData(form);
     const body={text:String(values.get("message")??"").trim(),request_id:String(values.get("request")??"")};
     if (!body.text) return;
     const fingerprint=JSON.stringify(body);
     if (retry.current?.fingerprint!==fingerprint) retry.current={fingerprint,id:crypto.randomUUID()};
+    submitting.current = true;
     setBusy(true);
     setError("");
     try {
@@ -81,31 +84,43 @@ export function WorkshopManager({base,tasks,requests,onQueued}: {base:string;tas
       await Promise.all([load(),onQueued()]);
     } catch(reason) {
       setError(reason instanceof Error?reason.message:"Не удалось отправить поручение.");
-    } finally {setBusy(false);}
+    } finally {submitting.current = false;setBusy(false);}
   }
 
-  return <section className="panel" id="workshop-manager">
-    <h2>AI-управляющий</h2>
-    <form onSubmit={submit}>
-      <label>Поручение управляющему<textarea name="message" maxLength={2000} rows={3} required
-        placeholder="Оформи заявку на замену фильтра для клиента…"/></label>
-      {requests.some(request=>request.close_kind==="consume" || request.status==="failed") && <label>Привязать заявку
+  return <section className="panel workshop-chat" id="workshop-manager" aria-labelledby="workshop-manager-title">
+    <h2 id="workshop-manager-title">AI-управляющий</h2>
+    <p className="field-hint">Рабочие поручения по данным вашей организации.</p>
+    <ol className="manager-history" aria-live="polite" aria-label="История поручений">
+      {turns.map(turn => {
+        const current = tasks.find(task => task.id === turn.task_id);
+        const status = current?.status ?? turn.status;
+        return <li key={turn.id}>
+          <div className="manager-message manager-user"><strong>Вы</strong><p>{turn.body}</p></div>
+          <div className="manager-message manager-reply"><strong>Business Manager</strong><p>{turn.reply}</p>
+            {status && <p className="field-hint">{statuses[status] ?? status}
+              {turn.request_id && <> · <a href={`#workshop-request-${turn.request_id}`}>Результат и действия</a></>}
+            </p>}
+          </div>
+        </li>;
+      })}
+    </ol>
+    {!turns.length && <p className="field-hint">{loaded ? "Выберите пример или напишите поручение." : "Загружаем историю поручений…"}</p>}
+    <div className="manager-examples" aria-label="Примеры поручений">
+      {["Сводка по организации","Что ждёт согласования?","Покажи финансовые показатели"].map(example => <button key={example} type="button" disabled={busy} onClick={() => {
+        if (composer.current) {composer.current.value = example;composer.current.focus();}
+      }}>{example}</button>)}
+    </div>
+    <form className="identity-form" onSubmit={submit} aria-busy={busy}>
+      <label>Поручение управляющему<textarea ref={composer} name="message" maxLength={2000} rows={3} required
+        placeholder="Например, оформи заявку на замену фильтра"/></label>
+      {requests.some(request => request.close_kind === "consume" || request.status === "failed") && <label>Привязать заявку
         <select name="request" aria-label="Привязать заявку" defaultValue="">
           <option value="">Без привязки</option>
-          {requests.filter(x=>x.close_kind==="consume" || x.status==="failed").map(x=><option key={x.id} value={x.id}>{x.service}</option>)}
-        </select></label>}
-      <button disabled={busy}>Отправить поручение</button>
+          {requests.filter(item => item.close_kind === "consume" || item.status === "failed").map(item => <option key={item.id} value={item.id}>{item.service}</option>)}
+        </select>
+      </label>}
+      <button className="primary" disabled={busy}>{busy ? "Отправляем поручение…" : "Отправить поручение"}</button>
     </form>
-    {error && <p role="alert">{error} <button type="button" onClick={()=>void load().then(()=>setError("")).catch(()=>setError("История пока недоступна."))}>Обновить историю</button></p>}
-    {loaded && !turns.length && <p>Здесь появятся поручения и ответы управляющего.</p>}
-    <ol aria-live="polite">{turns.map(turn=>{
-      const current=tasks.find(task=>task.id===turn.task_id);
-      const status=current?.status??turn.status;
-      return <li key={turn.id}><p><strong>Вы</strong> {turn.body}</p><p><strong>AI-управляющий</strong> {turn.reply}</p>
-        {status && <p>{statuses[status]??status}
-          {turn.request_id && <> · <a href={`#workshop-request-${turn.request_id}`}>Результат и действия</a></>}
-        </p>}
-      </li>;
-    })}</ol>
+    {error && <p role="alert">{error} <button type="button" onClick={() => void load().then(() => setError("")).catch(() => setError("История пока недоступна."))}>Обновить историю</button></p>}
   </section>;
 }

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {useCallback, useEffect, useRef, useState, type FormEvent} from "react";
+import type {WorkshopOverview} from "@/lib/workshop-overview";
 import {csrf} from "./IdentityForm";
 import {minor, money} from "@/lib/catalog";
 import {ManagerTaskList, WorkshopManager, type ManagerTask} from "./WorkshopManager";
@@ -26,10 +27,8 @@ type Request = {
   status: string; proposal: Result | null; outcome: Result | null; approval_id: string | null;
   parameters_hash: string | null; expires_at: string | null; approval_status: string | null;
 };
-type Overview = {customers:number;requests:number;completed:number;financial_count:number;paid_count:number;cash_minor:number;
-  gross_minor:number|null;available_skus:number;approvals:number;marketing_pending:number};
 type Workspace = {
-  overview: Overview|null;
+  overview: WorkshopOverview|null;
   tasks: ManagerTask[];
   enabled: boolean;
   customers: {id: string; name: string}[];

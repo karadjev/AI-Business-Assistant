@@ -43,10 +43,10 @@ func TestRealWorkshop(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err = migrate.Run(ctx, migrationDSN, "down"); err != nil {
-		t.Fatalf("empty 36 → 35: %v", err)
+		t.Fatalf("undo latest empty migration: %v", err)
 	}
 	if err = migrate.Run(ctx, migrationDSN, "up"); err != nil {
-		t.Fatalf("35 → 36: %v", err)
+		t.Fatalf("reapply latest empty migration: %v", err)
 	}
 	d, err := db.Open(ctx, appDSN, 8, 3*time.Second)
 	if err != nil {
@@ -454,7 +454,34 @@ func TestRealWorkshop(t *testing.T) {
 		t.Fatalf("outbound activity: %d %v", sent, err)
 	}
 
-	if err = migrate.Run(ctx, migrationDSN, "down"); err == nil {
-		t.Fatal("populated workshop migration must refuse rollback")
+	// The workshop marketing history belongs to migration 35. Later migrations
+	// can roll back on this fixture, which contains no data owned by them.
+	const marketingHistoryVersion = 35
+	currentVersion := func() int {
+		t.Helper()
+		var version int
+		if err := admin.QueryRow(ctx, `SELECT max(version_id) FROM platform.goose_db_version WHERE is_applied`).Scan(&version); err != nil {
+			t.Fatal("cannot determine isolated migration version", err)
+		}
+		return version
+	}
+	defer func() {
+		if err := migrate.Run(ctx, migrationDSN, "up"); err != nil {
+			t.Error("restore latest isolated schema", err)
+		}
+	}()
+	for version := currentVersion(); version > marketingHistoryVersion; version = currentVersion() {
+		if err := migrate.Run(ctx, migrationDSN, "down"); err != nil {
+			t.Fatalf("cannot reach populated workshop marketing schema from version %d: %v", version, err)
+		}
+		if currentVersion() >= version {
+			t.Fatalf("migration version %d did not roll back", version)
+		}
+	}
+	if currentVersion() != marketingHistoryVersion {
+		t.Fatal("unexpected schema before testing workshop history rollback")
+	}
+	if err = migrate.Run(ctx, migrationDSN, "down"); err == nil || currentVersion() != marketingHistoryVersion {
+		t.Fatal("populated workshop marketing migration must refuse rollback")
 	}
 }

@@ -1,31 +1,181 @@
 "use client";
-import {useEffect,useState,useRef} from "react";
+
+import {useEffect, useRef, useState, type FormEvent} from "react";
 import {useRouter} from "next/navigation";
 import Link from "next/link";
 import type {Organization} from "@/lib/session";
-export function csrf(){return decodeURIComponent(document.cookie.split(";").map(c=>c.trim()).find(c=>c.startsWith("aba_csrf="))?.slice(9)??"");}
-type Kind="register"|"login"|"verify"|"forgot"|"reset"|"create"|"settings";
-export function IdentityForm({kind,organization}:{kind:Kind;organization?:Organization}){
- const router=useRouter();const [busy,setBusy]=useState(false);const [error,setError]=useState("");const [message,setMessage]=useState("");const tokenInput=useRef<HTMLInputElement>(null);
- useEffect(()=>{if(kind==="verify"||kind==="reset"){const value=new URLSearchParams(location.hash.slice(1)).get("token");if(value){if(tokenInput.current)tokenInput.current.value=value;history.replaceState(null,"",location.pathname);}}},[kind]);
- async function submit(event:React.FormEvent<HTMLFormElement>){event.preventDefault();setBusy(true);setError("");setMessage("");const data=new FormData(event.currentTarget);
- const endpoint=kind==="register"?"auth/register":kind==="login"?"auth/login":kind==="verify"?"auth/verify-email":kind==="forgot"?"auth/password-reset":kind==="reset"?"auth/password-reset/confirm":kind==="settings"?`organizations/${organization!.id}`:"organizations";
- const body=kind==="register"?{email:data.get("email"),password:data.get("password"),display_name:data.get("display_name")}:kind==="login"?{email:data.get("email"),password:data.get("password")}:kind==="verify"?{token:data.get("token")}:kind==="forgot"?{email:data.get("email")}:kind==="reset"?{token:data.get("token"),password:data.get("password")}:{name:data.get("name"),timezone:data.get("timezone"),...(kind==="settings"?{expected_version:organization!.version}:{})};
- try{const r=await fetch(`/api/v1/${endpoint}`,{method:kind==="settings"?"PATCH":"POST",headers:{"Content-Type":"application/json","X-CSRF-Token":csrf()},body:JSON.stringify(body)});const result=r.status===204?{}:await r.json();if(!r.ok){setError(result.error?.message??"Не удалось выполнить действие");return;}
- if(kind==="login"){router.push("/dashboard");router.refresh();}else if(kind==="create"){router.push(`/dashboard?org=${result.id}`);router.refresh();}else if(kind==="settings"){setMessage("Настройки сохранены");router.refresh();}else if(kind==="verify"){if(tokenInput.current)tokenInput.current.value="";setMessage("Email подтверждён. Теперь можно войти.");}else if(kind==="reset"){if(tokenInput.current)tokenInput.current.value="";setMessage("Пароль изменён. Войдите с новым паролем.");}else{setMessage(result.message);}
- }catch{setError("Не удалось связаться с сервером. Повторите попытку.");}finally{setBusy(false);}}
- async function resend(event:React.FormEvent<HTMLFormElement>){event.preventDefault();setBusy(true);setError("");try{const r=await fetch("/api/v1/auth/resend-verification",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:new FormData(event.currentTarget).get("email")})});const data=await r.json();if(r.ok)setMessage(data.message);else setError(data.error?.message??"Ошибка запроса");}catch{setError("Сервер недоступен");}finally{setBusy(false);}}
- return <><form className="identity-form" onSubmit={submit}>
- {(kind==="register"||kind==="login"||kind==="forgot")&&<label>Email<input name="email" type="email" autoComplete="email" maxLength={254} required/></label>}
- {(kind==="register"||kind==="login"||kind==="reset")&&<label>Пароль<input name="password" type="password" autoComplete={kind==="login"?"current-password":"new-password"} minLength={12} maxLength={128} required/></label>}
- {kind==="register"&&<><label>Ваше имя<input name="display_name" autoComplete="name" maxLength={100} required/></label><p className="small">Пароль от 12 до 128 символов. Для локальной проверки используйте синтетический email.</p></>}
- {(kind==="verify"||kind==="reset")&&<label>{kind==="verify"?"Код подтверждения":"Код восстановления"}<input aria-label={kind==="verify"?"Код подтверждения":"Код восстановления"} type="password" autoComplete="off" name="token" ref={tokenInput} required/></label>}
- {(kind==="create"||kind==="settings")&&<><label>Название магазина<input name="name" defaultValue={organization?.name} maxLength={120} required/></label><label>Часовой пояс<input name="timezone" defaultValue={organization?.timezone??"Europe/Moscow"} maxLength={100} required/></label></>}
- {error&&<p role="alert" className="form-error">{error}</p>}{message&&<p role="status" className="form-success">{message}</p>}
- <button className="primary" disabled={busy}>{busy?"Выполняем…":kind==="register"?"Зарегистрироваться":kind==="login"?"Войти":kind==="verify"?"Подтвердить email":kind==="forgot"?"Отправить ссылку":kind==="reset"?"Изменить пароль":kind==="create"?"Создать магазин":"Сохранить настройки"}</button>
- </form>
- {kind==="verify"&&<form onSubmit={resend} className="identity-form"><h2>Нужна новая ссылка?</h2><label>Email<input name="email" type="email" required/></label><button disabled={busy}>Отправить повторно</button></form>}
- {(kind==="register"||kind==="verify"||kind==="forgot"||kind==="reset")&&<p className="auth-link"><Link prefetch={false} href="/login">Перейти ко входу →</Link></p>}{kind==="login"&&<p className="auth-link"><Link prefetch={false} href="/register">Создать аккаунт</Link> · <Link prefetch={false} href="/verify-email">Подтвердить email</Link> · <Link prefetch={false} href="/forgot-password">Забыли пароль?</Link></p>}
- </>;
+
+export function csrf() {
+  return decodeURIComponent(document.cookie.split(";").map(c => c.trim()).find(c => c.startsWith("aba_csrf="))?.slice(9) ?? "");
+}
+
+type Kind = "register"|"login"|"verify"|"forgot"|"reset"|"create"|"settings";
+
+const actions = {
+  register:"Создать аккаунт", login:"Войти", verify:"Подтвердить email", forgot:"Отправить ссылку",
+  reset:"Сохранить пароль", create:"Создать организацию", settings:"Сохранить настройки",
+};
+
+type Feedback = {message?:string; id?:string; error?:{code?:string; message?:string}};
+
+export function IdentityForm({kind,organization}: {kind:Kind; organization?:Organization}) {
+  const router = useRouter();
+  const [busy,setBusy] = useState(false);
+  const [error,setError] = useState("");
+  const [message,setMessage] = useState("");
+  const [email,setEmail] = useState("");
+  const [sentTo,setSentTo] = useState("");
+  const [finished,setFinished] = useState(false);
+  const [showPassword,setShowPassword] = useState(false);
+  const submitting = useRef(false);
+  const tokenInput = useRef<HTMLInputElement>(null);
+  const outcome = useRef<HTMLHeadingElement>(null);
+  const emailInput = useRef<HTMLInputElement>(null);
+  const focusEmail = useRef(false);
+  const newPassword = kind === "register" || kind === "reset";
+  const tokenFlow = kind === "verify" || kind === "reset";
+
+  useEffect(() => {
+    if (!tokenFlow) return;
+    function readToken() {
+      const value = new URLSearchParams(location.hash.slice(1)).get("token");
+      if (!value) return;
+      if (!tokenInput.current) {
+        location.reload();
+        return;
+      }
+      tokenInput.current.value = value;
+      history.replaceState(null,"",location.pathname + location.search);
+    }
+    readToken();
+    window.addEventListener("hashchange", readToken);
+    return () => window.removeEventListener("hashchange", readToken);
+  }, [tokenFlow]);
+
+  useEffect(() => {if (sentTo || finished) outcome.current?.focus();}, [sentTo,finished]);
+  useEffect(() => {if (!sentTo && focusEmail.current) {focusEmail.current = false; emailInput.current?.focus();}}, [sentTo]);
+
+  async function send(endpoint:string, data:unknown, onSuccess:(payload:Feedback)=>void) {
+    if (submitting.current) return;
+    submitting.current = true;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const response = await fetch(`/api/v1/${endpoint}`, {
+        method:kind === "settings" ? "PATCH" : "POST",
+        headers:{"Content-Type":"application/json","X-CSRF-Token":csrf()},
+        body:JSON.stringify(data),
+        signal:AbortSignal.timeout(12000),
+      });
+      const result:Feedback = response.status === 204 ? {} : await response.json();
+      if (!response.ok) {
+        setError(result.error?.code === "INVALID_TOKEN" || (tokenFlow && response.status === 422)
+          ? kind === "verify"
+            ? "Ссылка истекла или уже использована. Если вы уже подтвердили адрес, войдите. Иначе запросите новое письмо."
+            : "Проверьте пароль и срок действия ссылки. Если ссылка истекла или уже использована, запросите новую."
+          : result.error?.message ?? "Не удалось выполнить действие. Повторите попытку.");
+        return;
+      }
+      onSuccess(result);
+    } catch {
+      setError("Не удалось получить ответ сервера. Повторите попытку.");
+    } finally {
+      submitting.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function submit(event:FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const address = String(data.get("email") ?? "");
+    const password = String(data.get("password") ?? "");
+    if (newPassword && ([...password].length < 12 || [...password].length > 128)) {
+      setError("Введите пароль длиной от 12 до 128 символов.");
+      form.querySelector<HTMLInputElement>('[name="password"]')?.focus();
+      return;
+    }
+    switch (kind) {
+      case "register":
+        await send("auth/register",{email:address,password,display_name:"Пользователь"},() => {setEmail(address);setSentTo(address);}); break;
+      case "login":
+        await send("auth/login",{email:address,password},() => {router.replace("/dashboard");router.refresh();}); break;
+      case "verify":
+        await send("auth/verify-email",{token:data.get("token")},() => setFinished(true)); break;
+      case "forgot":
+        await send("auth/password-reset",{email:address},result => setMessage(result.message ?? "Проверьте почту.")); break;
+      case "reset":
+        await send("auth/password-reset/confirm",{token:data.get("token"),password},() => setFinished(true)); break;
+      case "create":
+        await send("organizations",{name:data.get("name"),timezone:data.get("timezone")},result => {router.replace(`/dashboard?org=${result.id}`);router.refresh();}); break;
+      case "settings":
+        if (organization) await send(`organizations/${organization.id}`,{name:data.get("name"),timezone:data.get("timezone"),expected_version:organization.version},() => {setMessage("Настройки сохранены.");router.refresh();});
+    }
+  }
+
+  const feedback = <>{error && <p role="alert" className="form-error">{error}</p>}{message && <p role="status" className="form-success">{message}</p>}</>;
+  const resend = (address:string) => void send("auth/resend-verification",{email:address},result => setMessage(result.message ?? "Проверьте почту."));
+  if (sentTo) return <section className="auth-outcome">
+    <h2 tabIndex={-1} ref={outcome}>Проверьте почту</h2>
+    <p>Если адрес доступен для регистрации, письмо придёт на <strong>{sentTo}</strong>. Откройте ссылку в письме, затем войдите в кабинет.</p>
+    <p>Если письма нет, проверьте папку «Спам» и правильность адреса.</p>
+    <div className="auth-outcome-actions">
+      <button type="button" disabled={busy} onClick={() => resend(sentTo)}>{busy ? "Подождите…" : "Отправить повторно"}</button>
+      <button type="button" disabled={busy} onClick={() => {focusEmail.current = true;setSentTo("");setMessage("");setError("");}}>Исправить email</button>
+    </div>
+    {feedback}
+    <p className="auth-link"><Link prefetch={false} href="/login">Перейти ко входу</Link></p>
+  </section>;
+
+  if (finished) return <section className="auth-outcome">
+    <h2 tabIndex={-1} ref={outcome}>{kind === "verify" ? "Email подтверждён" : "Пароль изменён"}</h2>
+    <p>Теперь можно войти в кабинет.</p>
+    <Link prefetch={false} className="button primary" href="/login">Войти</Link>
+  </section>;
+
+  return <>
+    <form className="identity-form" onSubmit={submit} aria-busy={busy}>
+      {(kind === "register" || kind === "login" || kind === "forgot") && <label>Email
+        <input ref={emailInput} name="email" type="email" autoComplete={kind === "login" ? "username" : "email"} maxLength={254} required value={email} onChange={event => setEmail(event.target.value)} spellCheck={false}/>
+      </label>}
+      {tokenFlow && <label>{kind === "verify" ? "Код подтверждения" : "Код восстановления"}
+        <input type="password" autoComplete="off" name="token" ref={tokenInput} required/>
+      </label>}
+      {(newPassword || kind === "login") && <div className="identity-password">
+        <label htmlFor="identity-password">Пароль</label>
+        <div className="password-control">
+          <input id="identity-password" name="password" type={showPassword ? "text" : "password"} autoComplete={newPassword ? "new-password" : "current-password"} aria-describedby={newPassword ? "password-policy" : undefined} required/>
+          <button type="button" aria-controls="identity-password" onClick={() => setShowPassword(value => !value)}>{showPassword ? "Скрыть" : "Показать"}</button>
+        </div>
+        {newPassword && <p id="password-policy" className="field-hint">От 12 до 128 символов. Можно вставить пароль из менеджера паролей.</p>}
+      </div>}
+      {(kind === "create" || kind === "settings") && <>
+        <label>Название организации<input name="name" defaultValue={organization?.name} maxLength={120} required/></label>
+        <label>Часовой пояс<input name="timezone" defaultValue={organization?.timezone ?? "Europe/Moscow"} maxLength={100} required/></label>
+      </>}
+      {kind !== "verify" && feedback}
+      <button className="primary" disabled={busy}>{busy ? "Подождите…" : actions[kind]}</button>
+    </form>
+    {kind === "verify" && <>
+      <details className="verification-help">
+        <summary>Не пришло письмо или нужна новая ссылка?</summary>
+        <p>Проверьте папку «Спам», затем запросите новую ссылку на адрес регистрации.</p>
+        <form className="identity-form" aria-busy={busy} onSubmit={event => {event.preventDefault();resend(String(new FormData(event.currentTarget).get("email")));}}>
+          <label>Email<input name="email" type="email" autoComplete="email" maxLength={254} required/></label>
+          <button disabled={busy}>Отправить повторно</button>
+        </form>
+      </details>
+      {feedback}
+    </>}
+    {kind === "reset" && <p className="auth-link"><Link prefetch={false} href="/forgot-password">Запросить новую ссылку</Link></p>}
+    {["register","verify","forgot","reset"].includes(kind) && <p className="auth-link"><Link prefetch={false} href="/login">Перейти ко входу</Link></p>}
+    {kind === "login" && <div className="auth-link auth-link-list">
+      <Link prefetch={false} href="/register">Создать аккаунт</Link>
+      <Link prefetch={false} href="/forgot-password">Забыли пароль?</Link>
+      <Link prefetch={false} href="/verify-email">Подтвердить email</Link>
+    </div>}
+  </>;
 }
 export function Logout(){const router=useRouter();const [error,setError]=useState("");const [busy,setBusy]=useState(false);return <div><button disabled={busy} onClick={async()=>{setBusy(true);try{const r=await fetch("/api/v1/auth/logout",{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-Token":csrf()},body:"{}"});if(!r.ok){setError("Не удалось выйти");return;}router.replace("/login");router.refresh();}catch{setError("Сервер недоступен");}finally{setBusy(false);}}}>Выйти</button>{error&&<p role="alert">{error}</p>}</div>}

@@ -8,6 +8,11 @@ import {csrf} from "./IdentityForm";
 const profiles = [
   {id: "vehicle_service_hybrid", model: "hybrid", industry: "vehicle_service", label: "Автосервис с продажей запчастей"},
   {id: "vehicle_service", model: "service", industry: "vehicle_service", label: "Автосервис без продажи запчастей"},
+  {id: "electronics", model: "trade", industry: "electronics", label: "Электроника"},
+  {id: "auto_parts", model: "trade", industry: "auto_parts", label: "Автозапчасти"},
+  {id: "building_materials", model: "trade", industry: "building_materials", label: "Строительные материалы"},
+  {id: "furniture", model: "trade", industry: "furniture", label: "Мебель"},
+  {id: "apparel", model: "trade", industry: "apparel", label: "Одежда"},
   {id: "personal_services", model: "service", industry: "personal_services", label: "Персональные услуги"},
   {id: "real_estate", model: "agency", industry: "real_estate", label: "Недвижимость"},
 ];
@@ -20,7 +25,7 @@ export function BusinessOnboarding({org, profile}: {org: string; profile: Profil
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const current = profiles.find(item => item.model === profile.model && item.industry === profile.industry);
-  const target = `/dashboard/ai-settings?org=${org}`;
+  const target = `/dashboard/command?org=${org}`;
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -53,8 +58,8 @@ export function BusinessOnboarding({org, profile}: {org: string; profile: Profil
     }
   }
 
-  return <section className="module-card">
-    <p>Профиль определяет доступные действия AI-команды. В автосервисе каталог используется для проверки запчастей в заявках на услуги.</p>
+  return <section className="module-card onboarding-card">
+    <p>Выберите профиль, чтобы AI-команда показала доступные для вашей отрасли поручения.</p>
     <form className="identity-form" onSubmit={save}>
       <label>Отрасль и профиль<select name="profile" defaultValue={current?.id ?? profiles[0].id} disabled={busy}>
         {profiles.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
@@ -62,6 +67,6 @@ export function BusinessOnboarding({org, profile}: {org: string; profile: Profil
       <button className="primary" disabled={busy}>{busy ? "Сохраняем…" : "Сохранить профиль и открыть AI-команду"}</button>
       {error && <p className="form-error" role="alert">{error}</p>}
     </form>
-    <Link prefetch={false} href="/dashboard/organizations">Мои организации</Link>
+    <nav aria-label="Дальнейшие действия"><Link prefetch={false} href="/dashboard/organizations">К списку организаций</Link><Link prefetch={false} href={`/dashboard?org=${org}`}>Настроить позже</Link></nav>
   </section>;
 }

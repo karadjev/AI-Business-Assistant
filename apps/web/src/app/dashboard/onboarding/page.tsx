@@ -18,7 +18,7 @@ export default async function Page({searchParams}: {searchParams: Promise<{org?:
   const response = await request(`organizations/${org.id}/agent-team`).catch(() => null);
   const data = response?.ok ? await response.json().catch(() => null) : null;
   const profile = data?.profile;
-  return <main id="main" tabIndex={-1}><h1>Настройка бизнеса · {org.name}</h1>
+  return <main id="main" tabIndex={-1} className="onboarding-experience"><p className="intelligence-kicker">Начало работы · шаг 2 из 2</p><h1>Выберите отрасль</h1><p className="lead">{org.name}</p>
     {typeof profile?.model === "string" && typeof profile.industry === "string" && Number.isSafeInteger(profile.revision)
       ? <BusinessOnboarding key={org.id} org={org.id} profile={profile}/>
       : <><p role="alert">Не удалось загрузить профиль организации.</p>

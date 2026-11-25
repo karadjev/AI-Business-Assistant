@@ -165,7 +165,7 @@ export function AgentApprovals({organizationId, timezone, canDecide, getCsrfToke
   const status = list.kind === "loading" ? "Загрузка запросов…"
     : savingId ? "Отправка решения…" : notice || (empty ? "Нет запросов, ожидающих подтверждения." : "");
   return (
-    <section className="module-card agent-approvals" aria-labelledby="agent-approvals-heading" data-testid="agent-approvals">
+    <section id="agent-approvals" className="module-card agent-approvals" aria-labelledby="agent-approvals-heading" data-testid="agent-approvals">
       <h2 id="agent-approvals-heading">Требуют подтверждения</h2>
       <button ref={refreshButton} type="button" className="button secondary" aria-disabled={busy} onClick={refresh}>
         Обновить запросы

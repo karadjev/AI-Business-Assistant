@@ -3,15 +3,18 @@ test("регистрация, Mailpit, сессия, организации, XSS
  test.setTimeout(180000);
  const email=`browser-${Date.now()}@example.test`;const password="Synthetic-Browser-Password-123!";const badName='<img src=x onerror="window.__xss=1">';
  await page.addInitScript(()=>{(window as unknown as {__xss:number}).__xss=0;});
- await page.goto("/register");await page.getByLabel("Email",{exact:true}).fill(email);await page.getByLabel("Пароль",{exact:true}).fill(password);await page.getByLabel("Ваше имя").fill("Тестовый владелец");await page.getByRole("button",{name:"Зарегистрироваться"}).click();await expect(page.getByRole("status")).toContainText("письмо");
+ await page.goto("/register");await page.getByLabel("Email",{exact:true}).fill(email);await page.getByLabel("Пароль",{exact:true}).fill(password);await page.getByRole("button",{name:"Создать аккаунт"}).click();await expect(page.getByRole("heading",{name:"Проверьте почту"})).toBeVisible();
  const mailpit=process.env.TEST_MAILPIT_URL??"http://127.0.0.1:8025";let token="";
  await expect.poll(async()=>{const r=await request.get(mailpit+"/api/v1/messages");const data=await r.json();const message=data.messages.find((m:{To:{Address:string}[]})=>m.To.some(t=>t.Address===email));if(!message)return false;const detail=await (await request.get(mailpit+"/api/v1/message/"+message.ID)).json();token=detail.Text.match(/token=([A-Za-z0-9_-]{43})/)?.[1]??"";return token.length===43;},{timeout:15000}).toBe(true);
- await page.goto(`/verify-email#token=${token}`);await expect(page.getByLabel("Код подтверждения")).toHaveValue(token);await expect(page).toHaveURL(/\/verify-email$/);await page.getByRole("button",{name:"Подтвердить email",exact:true}).click();await expect(page.getByRole("status")).toContainText("Email подтверждён");
- await page.goto("/login");await page.getByLabel("Email",{exact:true}).fill(email);await page.getByLabel("Пароль",{exact:true}).fill(password);await page.getByRole("button",{name:"Войти",exact:true}).click();await expect(page).toHaveURL(/\/dashboard$/);await expect(page.getByRole("heading",{name:"Создайте первый магазин"})).toBeVisible();
+ await page.goto(`/verify-email#token=${token}`);await expect(page.getByLabel("Код подтверждения")).toHaveValue(token);await expect(page).toHaveURL(/\/verify-email$/);await page.getByRole("button",{name:"Подтвердить email",exact:true}).click();await expect(page.getByRole("heading",{name:"Email подтверждён"})).toBeVisible();
+ await page.goto("/login");await page.getByLabel("Email",{exact:true}).fill(email);await page.getByLabel("Пароль",{exact:true}).fill(password);await page.getByRole("button",{name:"Войти",exact:true}).click();await expect(page).toHaveURL(/\/dashboard$/);await expect(page.getByRole("heading",{name:"Создайте первую организацию"})).toBeVisible();
  const cookies=await page.context().cookies();const session=cookies.find(c=>c.name==="aba_session");expect(session?.httpOnly).toBe(true);expect(session?.sameSite).toBe("Lax");expect(await page.evaluate(()=>localStorage.length)).toBe(0);
- await page.reload();await expect(page.getByRole("heading",{name:"Начнём с вашего магазина",exact:true})).toBeVisible();
- await page.getByRole("link",{name:"Создать магазин",exact:true}).click();await page.getByLabel("Название магазина").fill(badName);await page.getByRole("button",{name:"Создать магазин",exact:true}).click();await expect(page).toHaveURL(/\/dashboard\?org=/);await expect(page.getByRole("heading",{name:badName,exact:true})).toBeVisible();expect(await page.evaluate(()=>(window as unknown as {__xss:number}).__xss)).toBe(0);await expect(page.locator(".module-card img")).toHaveCount(0);
- await page.getByRole("navigation",{name:"Управление магазином"}).getByRole("link",{name:"Настройки",exact:true}).click();await page.getByLabel("Название магазина").fill("Магазин после редактирования");await page.getByRole("button",{name:"Сохранить настройки"}).click();await expect(page.getByRole("status")).toContainText("Настройки сохранены");
+ await page.reload();await expect(page.getByRole("heading",{name:"Начнём с вашей организации",exact:true})).toBeVisible();
+ const headers={Origin:new URL(page.url()).origin,"X-CSRF-Token":cookies.find(c=>c.name==="aba_csrf")?.value??""};
+ const normal=await page.request.post("/api/v1/organizations",{headers,data:{name:badName,timezone:"Europe/Moscow"}});
+ expect(normal.status()).toBe(201);
+ await page.goto(`/dashboard?org=${(await normal.json()).id}`);await expect(page.getByRole("heading",{name:badName,exact:true})).toBeVisible();expect(await page.evaluate(()=>(window as unknown as {__xss:number}).__xss)).toBe(0);await expect(page.locator(".module-card img")).toHaveCount(0);
+ await page.locator(".secondary-nav summary").click();await page.getByRole("navigation",{name:"Дополнительные разделы"}).getByRole("link",{name:"Настройки",exact:true}).click();await page.getByLabel("Название организации").fill("Магазин после редактирования");await page.getByRole("button",{name:"Сохранить настройки"}).click();await expect(page.getByRole("status")).toContainText("Настройки сохранены");
  await page.goto("/dashboard/organizations");await expect(page.getByRole("heading",{name:"Магазин после редактирования"})).toBeVisible();await page.screenshot({path:testInfo.outputPath("organizations.png"),fullPage:true});
 
  // Stage 4: real catalog through BFF, two tabs, two organizations, no fixtures in UI.
@@ -27,7 +30,7 @@ test("регистрация, Mailpit, сессия, организации, XSS
  await variantCard.getByLabel("Цена, ₽").fill("13000.01");await variantCard.getByRole("button",{name:"Добавить характеристику"}).click();await variantCard.getByLabel("Характеристика 1",{exact:true}).fill("memory");await variantCard.getByLabel("Значение 1",{exact:true}).fill("256GB");await page.getByRole("button",{name:"Сохранить вариант",exact:true}).click();await expect(variantCard.getByLabel("Цена, ₽")).toHaveValue("13000.01");
  await page.goto(`/dashboard/inventory?org=${own}`);await expect(page.getByRole("heading",{name:"История корректировок"})).toBeVisible();await expect(page.getByText(/Начальная сверка ·/)).toBeVisible();
  await page.goto(`/dashboard/products?org=${own}`);await page.getByLabel("Поиск",{exact:true}).fill("S25-BROWSER");await page.getByLabel("Статус",{exact:true}).selectOption("active");await page.getByLabel("Наличие",{exact:true}).selectOption("in_stock");await page.getByRole("button",{name:"Найти",exact:true}).click();await expect(page.getByRole("link",{name:"Galaxy <img src=x onerror=alert(1)>"})).toBeVisible();
- await page.goto("/dashboard/organizations/new");await page.getByLabel("Название магазина").fill("Второй тестовый магазин");await page.getByRole("button",{name:"Создать магазин",exact:true}).click();await expect(page).toHaveURL(/dashboard\?org=/);
+ expect((await page.request.post("/api/v1/organizations",{headers,data:{name:"Второй тестовый магазин",timezone:"Europe/Moscow"}})).status()).toBe(201);
  await page.goto(`/dashboard/products?org=${own}`);await page.getByLabel("Активный магазин").selectOption({label:"Второй тестовый магазин"});await expect(page.getByRole("heading",{name:"Добавьте первый товар",exact:true})).toBeVisible();await expect(page.getByRole("link",{name:"Galaxy <img src=x onerror=alert(1)>"})).toHaveCount(0);
  await page.getByLabel("Активный магазин").selectOption(own);await expect(page.getByRole("link",{name:"Galaxy <img src=x onerror=alert(1)>"})).toBeVisible();
  await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
@@ -76,11 +79,12 @@ test("регистрация, Mailpit, сессия, организации, XSS
  const ordinary=await (await page.request.get(`/api/v1/organizations/${own}/inventory`)).json();expect(ordinary.items.every((row:{quantity_reserved:number})=>row.quantity_reserved===0)).toBe(true);
 
  // Stage 6: isolated mock Telegram transport, same authenticated BFF.
+ const botId=Date.now();
  await page.goto(`/dashboard/integrations/telegram?org=${sandbox}`);
  await expect(page.getByRole("heading",{name:"Telegram · тестовая интеграция",exact:true})).toBeVisible();
- await page.getByLabel("Тестовый credential (mock:10001)").fill("mock:61001");
+ await page.getByLabel("Тестовый credential (mock:10001)").fill(`mock:${botId}`);
  await page.getByRole("button",{name:"Проверить и подключить",exact:true}).click();
- await expect(page.getByText(/@mock_shop_61001_bot/)).toBeVisible();
+ await expect(page.getByText(new RegExp(`@mock_shop_${botId}_bot`))).toBeVisible();
  const botStatus=async()=>await (await page.request.get(`/api/v1/organizations/${sandbox}/integrations/telegram`)).json();
  const pushTelegram=async(update:number,text:string,callback="")=>{await page.getByLabel("Update ID (уникальный, по порядку)").fill(String(update));await page.getByLabel("Сообщение",{exact:true}).fill(text);await page.getByLabel("Callback (пусто для сообщения)").fill(callback);await page.getByRole("button",{name:"Сохранить update",exact:true}).click();await expect(page.getByRole("status")).toContainText(/Событие надёжно сохранено|Повторное событие/);};
  await pushTelegram(101,"Есть PLAY5?");
@@ -96,7 +100,7 @@ test("регистрация, Mailpit, сессия, организации, XSS
  const tgConversations=await (await page.request.get(`/api/v1/organizations/${sandbox}/conversations`)).json();const tgChat=tgConversations.items.find((c:{channel:string})=>c.channel==="telegram");expect(tgChat).toBeTruthy();
  await page.goto(`/dashboard/conversations?org=${sandbox}&chat=${tgChat.id}`);await expect(page.locator(".chat-history .assistant")).toHaveCount(3);await expect(page.locator(".chat-history .assistant")).toContainText(["MOCK","MOCK","MOCK"]);await page.getByRole("button",{name:"Передать сотруднику",exact:true}).click();await expect(page.getByText(/Передано сотруднику — автоответы остановлены/)).toBeVisible();await page.getByLabel("Сообщение",{exact:true}).fill("Ответ Telegram сотрудника — синтетический");await page.getByRole("button",{name:"Отправить сообщение",exact:true}).click();await expect(page.getByText("Ответ Telegram сотрудника — синтетический",{exact:true})).toBeVisible();
  await page.goto(`/dashboard/integrations/telegram?org=${sandbox}`);await expect.poll(async()=>{const st=await botStatus();return st.integration.deliveries.some((d:{payload:{text?:string};status:string})=>d.payload.text==="Ответ Telegram сотрудника — синтетический"&&d.status==="sent");},{timeout:15000}).toBe(true);
- page.once("dialog",d=>d.accept());await page.getByRole("button",{name:"Отключить",exact:true}).click();await expect(page.getByText(/@mock_shop_61001_bot.*Отключён/)).toBeVisible();
+ page.once("dialog",d=>d.accept());await page.getByRole("button",{name:"Отключить",exact:true}).click();await expect(page.getByText(new RegExp(`@mock_shop_${botId}_bot.*Отключён`))).toBeVisible();
 
  // Stage 7: real settings BFF, zero budget, no external activation.
  await page.goto(`/dashboard/ai-settings?org=${sandbox}`);

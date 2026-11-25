@@ -4,6 +4,7 @@ import {useEffect, useRef, useState, type FormEvent} from "react";
 import {displayDate} from "@/lib/presentation";
 import {AgentApprovals} from "./AgentApprovals";
 import {AutoServiceApproval} from "./IndustryWorkflows";
+import {MarketingResults} from "./MarketingResults";
 import {StatusBadge} from "./ProductUI";
 import {Alert, Button, Select, Table} from "./UI";
 
@@ -89,6 +90,16 @@ const agentNames = new Map([
   ["analytics", "Аналитика"], ["marketing", "Маркетинг"],
   ["business_manager", "Бизнес-менеджер"],
 ]);
+
+const profileLabels: Record<string,string> = {
+  trade:"Торговля", service:"Услуги", hybrid:"Торговля и услуги", agency:"Агентство",
+};
+
+const capabilityLabels: Record<string,string> = {
+  completed_order_reports:"Отчёты по завершённым заказам", marketing_draft_approval:"Согласование предложений",
+  team_coordination:"Координация команды", catalog_price:"Цены", catalog_inventory:"Остатки",
+  catalog_details:"Карточки товаров", growth_review:"Анализ продаж и наличия",
+};
 
 const taskStatuses: Record<string, string> = {
   pending: "Ожидает постановки", queued: "В очереди", running: "Выполняется",
@@ -204,12 +215,13 @@ function LoadFeedback({resource, label}: {resource: Resource<unknown>; label: st
   return null;
 }
 
-export function AgentTeam({organizationId, timezone, owner, getCsrfToken, externalTaskId, onTaskSettled}: {
+export function AgentTeam({organizationId, timezone, owner, getCsrfToken, externalTaskId, onTaskSettled, commandCenter = false}: {
   organizationId: string;
   timezone: string;
   owner: boolean;
   getCsrfToken: () => string;
   externalTaskId?: string;
+  commandCenter?: boolean;
   onTaskSettled?: (task: {id: string; status: string; result: unknown}) => void;
 }) {
   const root = `/api/v1/organizations/${organizationId}`;
@@ -399,6 +411,29 @@ export function AgentTeam({organizationId, timezone, owner, getCsrfToken, extern
     }
   }
 
+  const profile = team.data?.profile;
+  const industry = profile && industries.find(item => item.model === profile.model && (("industry" in item ? item.industry : item.id) === profile.industry));
+  const profileControls = profile && <>
+      <dl className="agent-team-details">
+        <dt>Модель бизнеса</dt><dd>{profileLabels[profile.model] ?? (profile.model || "Не указана")}</dd>
+        <dt>Отрасль</dt><dd>{industry?.label ?? (profile.industry || "Не указана")}</dd>
+        <dt>Возможности</dt><dd>{profile.capabilities.map(value => capabilityLabels[value] ?? value).join(", ") || "Не указаны"}</dd>
+      </dl>
+      <form className="catalog-inline" onSubmit={updateProfile}>
+        <label>Выбор отрасли
+          <Select key={profile.revision} name="industry" defaultValue={
+            profile.industry === "vehicle_service" && profile.model === "hybrid"
+              ? "vehicle_service_hybrid" : profile.industry
+          } disabled={profilePending}>
+            {industries.map(industry => <option key={industry.id} value={industry.id}>{industry.label}</option>)}
+          </Select>
+        </label>
+        <Button type="submit" disabled={profilePending}>Сохранить отрасль</Button>
+      </form>
+      {profileError && <Alert tone="danger">{profileError}</Alert>}
+      {profileNotice && <p role="status">{profileNotice}</p>}
+  </>;
+
   return <section className="module-card agent-team" aria-labelledby="agent-team-heading" data-testid="agent-team">
     <h2 id="agent-team-heading">AI-команда</h2>
     {owner && <><div className="page-actions">
@@ -411,27 +446,10 @@ export function AgentTeam({organizationId, timezone, owner, getCsrfToken, extern
     <LoadFeedback resource={team} label="Команда"/>
     </>}
     {owner && team.data && <>
-      <dl className="agent-team-details">
-        <dt>Модель бизнеса</dt><dd>{team.data.profile.model || "Не указана"}</dd>
-        <dt>Отрасль</dt><dd>{team.data.profile.industry || "Не указана"}</dd>
-        <dt>Возможности</dt><dd>{team.data.profile.capabilities.join(", ") || "Не указаны"}</dd>
-      </dl>
-      <form className="catalog-inline" onSubmit={updateProfile}>
-        <label>Выбор отрасли
-          <Select key={team.data.profile.revision} name="industry" defaultValue={
-            team.data.profile.industry === "vehicle_service" && team.data.profile.model === "hybrid"
-              ? "vehicle_service_hybrid" : team.data.profile.industry
-          } disabled={profilePending}>
-            {industries.map(industry => <option key={industry.id} value={industry.id}>{industry.label}</option>)}
-          </Select>
-        </label>
-        <Button type="submit" disabled={profilePending}>Сохранить отрасль</Button>
-      </form>
-      {profileError && <Alert tone="danger">{profileError}</Alert>}
-      {profileNotice && <p role="status">{profileNotice}</p>}
-      {agents.length === 0 ? <p>Агенты не настроены.</p> : <div className="channel-cards">
+      {commandCenter ? <details className="command-profile"><summary>Профиль бизнеса и возможности</summary>{profileControls}</details> : profileControls}
+      {agents.length === 0 ? <p>Агенты не настроены.</p> : <div className={commandCenter ? "channel-cards team-roster" : "channel-cards"}>
         {agents.map(agent => <details key={agent.id} className="channel-card" data-testid={`agent-card-${agent.id}`}>
-          <summary>{agentName(agent.id)} <StatusBadge tone={agent.enabled ? "positive" : "neutral"}>
+          <summary><span>{agentName(agent.id)}</span> <StatusBadge tone={agent.enabled ? "positive" : "neutral"}>
             {agent.enabled ? "Включён" : "Отключён"}
           </StatusBadge></summary>
           <p>{agent.description}</p>
@@ -443,8 +461,9 @@ export function AgentTeam({organizationId, timezone, owner, getCsrfToken, extern
       </div>}
     </>}
     {owner
-      ? <section aria-labelledby="agent-create-heading">
-        <h3 id="agent-create-heading">Новая задача</h3>
+      ? <section className={commandCenter ? "command-composer" : undefined} aria-labelledby="agent-create-heading">
+        <h3 id="agent-create-heading">{commandCenter ? "Первое поручение" : "Новая задача"}</h3>
+        {commandCenter && <p>Выберите доступное действие. Статус и результат появятся в истории поручений.</p>}
         {team.data && availableOperations.length === 0 && <p>У включённых агентов нет доступных действий.</p>}
         {availableOperations.length > 0 && <form className="catalog-inline" onSubmit={createTask}>
           <label>Действие агента
@@ -460,7 +479,7 @@ export function AgentTeam({organizationId, timezone, owner, getCsrfToken, extern
           </Button>
         </form>}
         <p role="status" data-testid="agent-task-submission">
-          {submitting ? "Отправляем задачу…" : submission && "id" in submission ? `Задача принята · ${submission.id}` : ""}
+          {submitting ? "Отправляем задачу…" : submission && "id" in submission ? `Задача принята${commandCenter ? "" : ` · ${submission.id}`}` : ""}
           {submittedTask && ` · ${statusLabel(submittedTask.status)}`}
         </p>
         {submission && "error" in submission && <Alert tone="danger">{submission.error}</Alert>}
@@ -521,11 +540,14 @@ export function AgentTeam({organizationId, timezone, owner, getCsrfToken, extern
               </>}
               {task.result === null ? <p>{activeTaskStatuses.has(task.status) ? "Появится после обработки." :
                 task.status === "waiting_approval" ? "Выполнение начнётся после согласования." : "Результат отсутствует."}</p>
+                : commandCenter ? <details><summary>Данные результата</summary><pre data-testid={`agent-task-result-${task.id}`}>{JSON.stringify(task.result, null, 2)}</pre></details>
                 : <pre data-testid={`agent-task-result-${task.id}`}>{JSON.stringify(task.result, null, 2)}</pre>}
             </details>;
           })}
         </div>}
       </section>
+
+      {commandCenter && <MarketingResults organizationId={organizationId} version={activityVersion} onDecision={refreshActivity}/>}
 
       <section aria-labelledby="agent-audit-heading" data-testid="agent-audit">
         <h3 id="agent-audit-heading">Журнал действий</h3>
@@ -542,7 +564,7 @@ export function AgentTeam({organizationId, timezone, owner, getCsrfToken, extern
               <td>{displayDate(entry.created_at, timezone)}</td><td>{agentName(entry.agent_id)}</td>
               <td>{bookingDelivery ? "Уведомление о записи" : entry.action}</td>
               <td>{result}{entry.error_code && ` · ${entry.error_code}`}</td>
-              <td>{entry.task_id}</td>
+              <td>{commandCenter && taskIDs.has(entry.task_id) ? <a href={`#agent-task-${entry.task_id}`}>{entry.task_id}</a> : entry.task_id}</td>
             </tr>;
           })}</tbody>
         </Table>}

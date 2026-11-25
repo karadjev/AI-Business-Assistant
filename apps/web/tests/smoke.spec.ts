@@ -1,9 +1,9 @@
 import {test,expect} from "@playwright/test";
 
 test("главная страница и серверная защита кабинета",async({page},testInfo)=>{
- await page.goto("/");await expect(page.getByRole("heading",{level:1})).toContainText("Ближе к покупателю");
+ await page.goto("/");await expect(page.getByRole("heading",{level:1})).toContainText("Управляйте бизнесом.");
  await page.screenshot({path:testInfo.outputPath("home-desktop.png"),fullPage:true});
- for(const path of ["/dashboard/products","/dashboard/categories","/dashboard/inventory","/dashboard/products/new","/dashboard/orders","/dashboard/ai-playground"]){await page.goto(path);await expect(page).toHaveURL(/\/login$/);}
+ for(const path of ["/dashboard/command","/dashboard/products","/dashboard/categories","/dashboard/inventory","/dashboard/products/new","/dashboard/orders","/dashboard/ai-playground"]){await page.goto(path);await expect(page).toHaveURL(/\/login$/);}
  await page.goto("/dashboard");await expect(page).toHaveURL(/\/login$/);await expect(page.getByRole("heading",{name:"Войти в кабинет"})).toBeVisible();
  await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
 });

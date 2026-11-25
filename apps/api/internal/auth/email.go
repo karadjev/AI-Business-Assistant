@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
 	"net/mail"
 	"net/smtp"
@@ -97,15 +96,15 @@ func send(ctx context.Context, addr string, transport config.SMTP, msg emailPayl
 	if e = client.Rcpt(recipient); e != nil {
 		return e
 	}
+	body, e := renderIdentityEmail(from, recipient, msg)
+	if e != nil {
+		return e
+	}
 	writer, e := client.Data()
 	if e != nil {
 		return e
 	}
-	subject, body := "Verify your email", "Confirm your email (link expires):\r\n"
-	if msg.Kind == "password_reset" {
-		subject, body = "Reset your password", "Reset your password using this one-time link (expires shortly):\r\n"
-	}
-	_, e = fmt.Fprintf(writer, "From: %s\r\nTo: %s\r\nSubject: %s\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s%s\r\n", from.String(), recipient, subject, body, msg.Link)
+	_, e = writer.Write(body)
 	if e != nil {
 		return e
 	}

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import {useEffect, useState} from "react";
+import {useEffect, useRef, useState} from "react";
 import {useRouter} from "next/navigation";
 import {csrf} from "./IdentityForm";
 
@@ -26,6 +26,7 @@ export function InboxReview({org,conversation,owner,enabled,details}:{
 }) {
   const router=useRouter();
   const [busy,setBusy]=useState(false);
+  const submitting=useRef(false);
   const [error,setError]=useState("");
   useEffect(()=>{
     if (!conversation) return;
@@ -34,6 +35,8 @@ export function InboxReview({org,conversation,owner,enabled,details}:{
   },[conversation,router]);
 
   async function submit(route:string, body:object) {
+    if (submitting.current) return;
+    submitting.current=true;
     setBusy(true);
     setError("");
     try {
@@ -49,17 +52,18 @@ export function InboxReview({org,conversation,owner,enabled,details}:{
     } catch (reason) {
       setError(reason instanceof Error?reason.message:"Не удалось выполнить действие");
     } finally {
+      submitting.current=false;
       setBusy(false);
     }
   }
 
-  return <section className="panel" aria-label="Состояние обращения">
+  return <section className="panel inbox-review" aria-label="Состояние обращения" aria-busy={busy}>
     <h2>Согласование ответов AI</h2>
     {enabled?<p>Ответы управляющего в тестовом Inbox проходят согласование владельца.</p>:<p>Согласование ответов управляющего выключено.</p>}
     {owner&&!enabled&&<button type="button" disabled={busy} onClick={()=>void submit("inbox",{})}>Включить согласование в тестовом контуре</button>}
     {details&&<><p><strong>Карточка клиента</strong> · {details.customer.channel} · {details.customer.id.slice(0,8)}</p>
       {details.assignee_id&&<p>Назначен сотрудник: {details.operators.find(user=>user.id===details.assignee_id)?.name??"Диалог назначен"}</p>}
-      {owner&&conversation&&details.customer.channel!=="internal_chat"&&<form onSubmit={event=>{
+      {owner&&conversation&&details.customer.channel!=="internal_chat"&&<form className="identity-form" onSubmit={event=>{
         event.preventDefault();
         const assignee=String(new FormData(event.currentTarget).get("assignee")??"");
         void submit(`conversations/${conversation}/inbox/assignee`,{assignee:assignee||null,expected_version:details.version});
@@ -68,10 +72,10 @@ export function InboxReview({org,conversation,owner,enabled,details}:{
           <option value="">Без назначения</option>
           {details.operators.map(operator=><option key={operator.id} value={operator.id}>{operator.name}</option>)}
         </select></label>
-        <button disabled={busy}>Передать сотруднику</button>
+        <button disabled={busy}>{busy?"Сохраняем…":"Сохранить ответственного"}</button>
       </form>}
       {details.processing_state&&<p>Состояние обработки · {details.processing_state}</p>}
-      {conversation&&details.drafts.map(draft=><article key={draft.task_id}>
+      {conversation&&details.drafts.map(draft=><article className="inbox-draft" key={draft.task_id}>
         <p><strong>{decisions[draft.status]??draft.status}</strong> · {new Date(draft.expires_at).toLocaleString("ru-RU")}</p>
         <p>{draft.body}</p>
         {owner&&draft.status==="pending"&&<>

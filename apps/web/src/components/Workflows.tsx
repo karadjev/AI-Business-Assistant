@@ -43,7 +43,7 @@ export function SandboxForm({businessOnboarding = false}: {businessOnboarding?: 
     <input name="name" required maxLength={120}
      defaultValue={businessOnboarding ? "" : "Тестовый магазин — синтетические данные"}/>
    </label>
-   <button disabled={busy}>{businessOnboarding ? "Создать и выбрать отрасль" : "Создать тестовый магазин"}</button>
+   <button className="primary" disabled={busy}>{busy ? "Создаём организацию…" : businessOnboarding ? "Создать и выбрать отрасль" : "Создать тестовый магазин"}</button>
    {error && <p role="alert" className="form-error">{error}</p>}
   </form>
  </section>;
