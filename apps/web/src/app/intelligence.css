@@ -283,12 +283,89 @@
   .team-usage dl {gap:8px 10px}
 }
 
-/* Public overview and its demo share the same blue surfaces as the workspace. */
+/* The glow and grid belong to the home page background. */
 body:has(> .landing) {
+  --landing-glow: #84baff;
+  --landing-grid: #4179bc;
+  --landing-glow-strength: 24%;
+  --landing-grid-strength: 9%;
+  --landing-base: linear-gradient(155deg, #fff 4%, #f7faff 42%, #ebf4ff 68%, #f8fbff 100%);
+  position: relative;
+  isolation: isolate;
   background-image:
-    radial-gradient(ellipse at 74% 21%,color-mix(in srgb,var(--accent) 8%,transparent),transparent 43%),
-    radial-gradient(ellipse at 21% 46%,color-mix(in srgb,var(--accent) 4%,transparent),transparent 42%);
+    radial-gradient(ellipse at 28% 22%, color-mix(in srgb, var(--landing-glow) 11%, transparent), transparent 48%),
+    var(--landing-base);
 }
+
+body:has(> .landing):where([data-theme=dark] *) {
+  --landing-glow: #589cff;
+  --landing-grid: #89b9ff;
+  --landing-glow-strength: 22%;
+  --landing-grid-strength: 12%;
+  --landing-base: linear-gradient(155deg, #0b1223 5%, #101f38 40%, #0c172c 67%, #0a111f 100%);
+}
+
+@media (prefers-color-scheme: dark) {
+  body:has(> .landing):where(:root:not([data-theme=light]) *) {
+    --landing-glow: #589cff;
+    --landing-grid: #89b9ff;
+    --landing-glow-strength: 22%;
+    --landing-grid-strength: 12%;
+    --landing-base: linear-gradient(155deg, #0b1223 5%, #101f38 40%, #0c172c 67%, #0a111f 100%);
+  }
+}
+
+body:has(> .landing)::before,
+body:has(> .landing)::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+}
+
+body:has(> .landing)::before {
+  inset: 72px 0 auto;
+  height: min(660px, 76%);
+  background: radial-gradient(ellipse 48% 55% at 74% 44%,
+    color-mix(in srgb, var(--landing-glow) var(--landing-glow-strength), transparent),
+    transparent 94%);
+}
+
+body:has(> .landing)::after {
+  inset: 80px 0 auto;
+  height: min(740px, 78%);
+  --landing-grid-line: color-mix(in srgb, var(--landing-grid) var(--landing-grid-strength), transparent);
+  background-image:
+    linear-gradient(var(--landing-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--landing-grid-line) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 54% 56% at 72% 35%, #000, transparent 95%);
+}
+
+@media (max-width: 800px) {
+  body:has(> .landing)::before {
+    height: 72%;
+    background: radial-gradient(ellipse 80% 39% at 62% 67%,
+      color-mix(in srgb, var(--landing-glow) var(--landing-glow-strength), transparent),
+      transparent 96%);
+  }
+
+  body:has(> .landing)::after {
+    height: 74%;
+    background-size: 36px 36px;
+    mask-image: radial-gradient(ellipse 76% 45% at 65% 60%, #000, transparent 95%);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  body:has(> .landing)::before { animation: landing-glow 20s ease-in-out infinite alternate; }
+
+  @keyframes landing-glow {
+    from { opacity: .68; }
+    to { opacity: 1; }
+  }
+}
+
 .landing .flow-bottom {color:var(--muted)}
 .flow-steps {position:relative}
 .flow-steps::before {
