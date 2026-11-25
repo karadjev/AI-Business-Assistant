@@ -5,7 +5,7 @@ import {displayDate} from "@/lib/presentation";
 import {AgentApprovals} from "./AgentApprovals";
 import {AutoServiceApproval} from "./IndustryWorkflows";
 import {MarketingResults} from "./MarketingResults";
-import {StatusBadge} from "./ProductUI";
+import {AgentIcon, StatusBadge} from "./ProductUI";
 import {Alert, Button, Select, Table} from "./UI";
 
 type Agent = {
@@ -447,9 +447,9 @@ export function AgentTeam({organizationId, timezone, owner, getCsrfToken, extern
     </>}
     {owner && team.data && <>
       {commandCenter ? <details className="command-profile"><summary>Профиль бизнеса и возможности</summary>{profileControls}</details> : profileControls}
-      {agents.length === 0 ? <p>Агенты не настроены.</p> : <div className={commandCenter ? "channel-cards team-roster" : "channel-cards"}>
+      {agents.length === 0 ? <p>Агенты не настроены.</p> : <div className="channel-cards team-roster">
         {agents.map(agent => <details key={agent.id} className="channel-card" data-testid={`agent-card-${agent.id}`}>
-          <summary><span>{agentName(agent.id)}</span> <StatusBadge tone={agent.enabled ? "positive" : "neutral"}>
+          <summary><span className="agent-title"><span className="agent-symbol"><AgentIcon id={agent.id}/></span>{agentName(agent.id)}</span><StatusBadge tone={agent.enabled ? "positive" : "neutral"}>
             {agent.enabled ? "Включён" : "Отключён"}
           </StatusBadge></summary>
           <p>{agent.description}</p>

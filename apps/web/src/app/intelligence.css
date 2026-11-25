@@ -22,9 +22,9 @@
 .landing .hero .small {max-width:60ch;font-size:13px;line-height:1.55}
 .landing .flow-card {
   padding:clamp(18px,2.25vw,32px);
-  background:radial-gradient(ellipse at 94% 0%, color-mix(in srgb,var(--accent) 13%,transparent),transparent 65%),var(--surface);
+  background:radial-gradient(ellipse at 94% 0%, color-mix(in srgb,var(--accent) 16%,transparent),transparent 68%),linear-gradient(155deg,var(--surface),color-mix(in srgb,var(--surface) 92%,var(--soft)));
   border-color:color-mix(in srgb,var(--accent) 24%,var(--border));
-  box-shadow:0 16px 42px -24px color-mix(in srgb,var(--accent) 38%,transparent),var(--shadow);
+  box-shadow:inset 0 1px color-mix(in srgb,var(--accent) 12%,transparent),0 22px 44px -26px color-mix(in srgb,var(--accent) 42%,transparent),var(--shadow);
 }
 .flow-heading {align-items:center;flex-wrap:wrap;gap:8px 12px}
 .flow-heading .eyebrow {margin:0}
@@ -51,7 +51,6 @@
   box-shadow:0 8px 24px -18px var(--accent);
 }
 .sidebar nav a {transition:background-color 150ms ease,color 150ms ease}
-.sidebar nav a[aria-current=page] {background:linear-gradient(105deg,var(--soft),var(--surface))}
 .workspace .account-bar {border-bottom-color:color-mix(in srgb,var(--accent) 14%,var(--border))}
 .dashboard .command-feature h2 {font-weight:680}
 @media (hover:hover) and (prefers-reduced-motion:no-preference) {
@@ -284,6 +283,104 @@
   .team-usage dl {gap:8px 10px}
 }
 
+/* Public overview and its demo share the same blue surfaces as the workspace. */
+body:has(> .landing) {
+  background-image:
+    radial-gradient(ellipse at 74% 21%,color-mix(in srgb,var(--accent) 8%,transparent),transparent 43%),
+    radial-gradient(ellipse at 21% 46%,color-mix(in srgb,var(--accent) 4%,transparent),transparent 42%);
+}
+.landing .flow-bottom {color:var(--muted)}
+.flow-steps {position:relative}
+.flow-steps::before {
+  content:"";position:absolute;inset-block:36px;inset-inline-start:19px;
+  border-inline-start:1px solid color-mix(in srgb,var(--accent) 28%,var(--border));pointer-events:none;
+}
+@media (max-width:480px) {.flow-steps::before {inset-inline-start:17px}}
+.flow-steps .step-number {position:relative;z-index:1}
+.landing :is(.public-agent-list,.public-channel-list) {
+  display:flex;flex-wrap:wrap;gap:6px;
+  margin:12px 0 0;padding:0;list-style:none;
+}
+.landing :is(.public-agent-list,.public-channel-list) li {
+  display:inline-flex;align-items:center;gap:5px;min-height:28px;
+  padding:3px 8px;border:1px solid var(--border);border-radius:8px;
+  background:var(--surface);color:var(--text);font-size:12px;line-height:1.35;
+}
+.landing :is(.public-agent-list,.public-channel-list) svg {width:14px;height:14px;flex:none;color:var(--accent)}
+.landing .public-agent-list li:first-child {background:var(--soft)}
+.landing .principles .public-channel-note {margin-top:8px;font-size:12px}
+
+.sidebar nav a[aria-current=page] {
+  background:linear-gradient(105deg,var(--soft),color-mix(in srgb,var(--soft) 28%,var(--surface)));
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 23%,var(--border));
+}
+.sidebar nav a[aria-current=page] > svg {stroke-width:2}
+.dashboard .overview-metric {
+  background:linear-gradient(150deg,var(--surface) 55%,color-mix(in srgb,var(--surface) 84%,var(--soft)));
+}
+.dashboard .overview-metric strong {letter-spacing:-.035em;line-height:1.15}
+.finance-plot button {border-color:var(--border)}
+.finance-plot button:is(:hover,:focus-visible) {border-color:var(--accent)}
+.finance-track {background:color-mix(in srgb,var(--soft) 55%,transparent);border-radius:5px}
+.finance-lane i {border-radius:4px}
+.finance-lane .finance-series-0 {background:linear-gradient(90deg,var(--finance-0),color-mix(in srgb,var(--finance-0) 86%,var(--surface)))}
+.finance-lane .finance-series-1 {background:linear-gradient(90deg,var(--finance-1),color-mix(in srgb,var(--finance-1) 86%,var(--surface)))}
+.finance-detail {border-inline-start:3px solid var(--accent)}
+
+.manager-heading {display:flex;align-items:center;gap:12px}
+.manager-heading :is(h2,p) {margin:0}
+.agent-symbol {
+  display:inline-grid;place-items:center;flex:none;width:32px;height:32px;
+  border:1px solid color-mix(in srgb,var(--accent) 20%,var(--border));
+  border-radius:9px;background:var(--soft);color:var(--accent);
+}
+.agent-symbol svg {width:16px;height:16px}
+.manager-heading .agent-symbol {width:40px;height:40px}
+.team-roster summary {display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;justify-content:space-between;min-height:44px;list-style:none}
+.team-roster summary::-webkit-details-marker {display:none}
+.team-roster summary::after {
+  content:"";width:7px;height:7px;margin-inline-end:2px;
+  border-right:1.5px solid var(--muted);border-bottom:1.5px solid var(--muted);transform:rotate(45deg);flex:none;
+}
+.team-roster details[open] summary::after {transform:rotate(225deg)}
+.team-roster .agent-title {display:inline-flex;align-items:center;gap:8px;flex:1 1 100px;line-height:1.4}
+.team-roster .status-badge {white-space:nowrap}
+.channel-card-symbol svg {width:20px;height:20px}
+.manager-history:not(:empty) {padding:clamp(8px,2vw,16px);border:1px solid var(--border);border-radius:var(--radius);background:var(--bg)}
+.manager-reply {border-inline-start:3px solid var(--accent)}
+.manager-message-status {display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin-top:8px;font-size:13px}
+.manager-empty {margin-top:14px;padding:10px 12px;border-radius:var(--radius-control);background:var(--surface-muted)}
+.workshop-chat .identity-form {padding:clamp(12px,2vw,20px);border:1px solid var(--border);border-radius:var(--radius);background:var(--bg)}
+.workshop-chat .identity-form textarea {resize:vertical}
+.workshop-chat .ui-alert button {margin-inline-start:6px}
+
+.dashboard .table-scroll {border-radius:var(--radius-control);border:1px solid var(--border)}
+.dashboard .table-scroll thead th {background:var(--surface-muted);color:var(--text);font-weight:650}
+.dashboard .table-scroll tbody tr:nth-child(even) {background:color-mix(in srgb,var(--surface-muted) 40%,var(--surface))}
+.dashboard .table-scroll tbody tr:focus-within {background:var(--soft)}
+.dashboard .identity-form :is(input:not([type=checkbox],[type=radio],[type=hidden]),select,textarea) {background:var(--surface);border-color:var(--control-border)}
+.dashboard .ui-alert {border-inline-start-width:3px}
+.dashboard :is(.ui-alert-info,.notice) {border-inline-start:3px solid var(--accent)}
+.dashboard .dashboard-loading > div {
+  position:relative;overflow:hidden;background:var(--surface);animation:none;
+}
+.dashboard .dashboard-loading > div::before {
+  content:"";position:absolute;inset:22px 20px;
+  background:
+    linear-gradient(var(--soft),var(--soft)) left top / min(220px,48%) 14px,
+    linear-gradient(var(--surface-muted),var(--surface-muted)) left 32px / 84% 10px,
+    linear-gradient(var(--surface-muted),var(--surface-muted)) left 54px / 64% 10px;
+  background-repeat:no-repeat;
+}
+@media (hover:hover) {
+  .dashboard .table-scroll tr:hover {background:var(--soft)}
+  .team-roster .channel-card:hover {border-color:var(--accent)}
+}
+@media (prefers-reduced-motion:no-preference) {
+  .landing :is(.hero,.flow-card) {animation:blue-arrive 260ms ease-out both}
+  .landing .flow-card {animation-delay:45ms}
+  @keyframes blue-arrive {from {opacity:.86;transform:translateY(4px)} to {opacity:1;transform:translateY(0)}}
+}
 @media (prefers-reduced-motion:reduce) {
   .landing .button,.sidebar nav a,.sidebar,.dashboard :is(.overview-metric,.channel-card,.pending-order,.finance-lane i) {transition:none}
 }

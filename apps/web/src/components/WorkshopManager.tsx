@@ -2,6 +2,8 @@
 
 import {useCallback, useEffect, useRef, useState, type FormEvent} from "react";
 import {csrf} from "./IdentityForm";
+import {AgentIcon, StatusBadge} from "./ProductUI";
+import {Alert} from "./UI";
 
 export type ManagerTask = {id:string;request_id:string;agent_id:string;action:string;status:string;error_code:string|null};
 type Turn = {id:string;body:string;reply:string;task_id:string|null;request_id:string|null;status:string|null;error_code:string|null};
@@ -88,8 +90,11 @@ export function WorkshopManager({base,tasks,requests,onQueued}: {base:string;tas
   }
 
   return <section className="panel workshop-chat" id="workshop-manager" aria-labelledby="workshop-manager-title">
-    <h2 id="workshop-manager-title">AI-управляющий</h2>
-    <p className="field-hint">Рабочие поручения по данным вашей организации.</p>
+    <header className="manager-heading">
+      <span className="agent-symbol"><AgentIcon id="business_manager"/></span>
+      <div><h2 id="workshop-manager-title">AI-управляющий</h2>
+      <p className="field-hint">Рабочие поручения по данным вашей организации.</p></div>
+    </header>
     <ol className="manager-history" aria-live="polite" aria-label="История поручений">
       {turns.map(turn => {
         const current = tasks.find(task => task.id === turn.task_id);
@@ -97,14 +102,15 @@ export function WorkshopManager({base,tasks,requests,onQueued}: {base:string;tas
         return <li key={turn.id}>
           <div className="manager-message manager-user"><strong>Вы</strong><p>{turn.body}</p></div>
           <div className="manager-message manager-reply"><strong>Business Manager</strong><p>{turn.reply}</p>
-            {status && <p className="field-hint">{statuses[status] ?? status}
-              {turn.request_id && <> · <a href={`#workshop-request-${turn.request_id}`}>Результат и действия</a></>}
-            </p>}
+            {status && <div className="manager-message-status">
+              <StatusBadge tone={status === "completed" ? "positive" : status === "failed" ? "danger" : status === "waiting_approval" ? "warning" : "neutral"}>{statuses[status] ?? status}</StatusBadge>
+              {turn.request_id && <a href={`#workshop-request-${turn.request_id}`}>Результат и действия</a>}
+            </div>}
           </div>
         </li>;
       })}
     </ol>
-    {!turns.length && <p className="field-hint">{loaded ? "Выберите пример или напишите поручение." : "Загружаем историю поручений…"}</p>}
+    {!turns.length && <p className="field-hint manager-empty" role="status">{loaded ? "Выберите пример или напишите поручение." : error ? "История поручений недоступна." : "Загружаем историю поручений…"}</p>}
     <div className="manager-examples" aria-label="Примеры поручений">
       {["Сводка по организации","Что ждёт согласования?","Покажи финансовые показатели"].map(example => <button key={example} type="button" disabled={busy} onClick={() => {
         if (composer.current) {composer.current.value = example;composer.current.focus();}
@@ -121,6 +127,6 @@ export function WorkshopManager({base,tasks,requests,onQueued}: {base:string;tas
       </label>}
       <button className="primary" disabled={busy}>{busy ? "Отправляем поручение…" : "Отправить поручение"}</button>
     </form>
-    {error && <p role="alert">{error} <button type="button" onClick={() => void load().then(() => setError("")).catch(() => setError("История пока недоступна."))}>Обновить историю</button></p>}
+    {error && <Alert tone="danger">{error} <button type="button" onClick={() => void load().then(() => setError("")).catch(() => setError("История пока недоступна."))}>Обновить историю</button></Alert>}
   </section>;
 }

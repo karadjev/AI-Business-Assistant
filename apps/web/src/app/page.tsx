@@ -1,5 +1,6 @@
 import Link from "next/link";
-import {Icon} from "@/components/ProductUI";
+import {intelligenceTeam} from "@/components/IntelligenceCore";
+import {AgentIcon, Icon} from "@/components/ProductUI";
 
 const steps = [
   {icon: "chat", title: "Клиент задаёт вопрос", description: "Например, уточняет наличие товара или условия услуги."},
@@ -7,10 +8,12 @@ const steps = [
   {icon: "check", title: "Сотрудник проверяет результат", description: "Заявку, резерв или черновик можно проверить и согласовать в кабинете."},
 ] as const;
 
+const channels = [["telegram","Telegram"],["whatsapp","WhatsApp"],["instagram","Instagram"]] as const;
+
 const principles = [
   {icon: "catalog", title: "Торговля и услуги", description: "Ведите каталог, остатки и заявки. Выберите профиль, чтобы получить поручения для вашей отрасли."},
-  {icon: "ai", title: "Семь AI-агентов", description: "Business Manager координирует продажи, поддержку, каталог, финансы, маркетинг и аналитику."},
-  {icon: "channels", title: "Каналы под вашим контролем", description: "Статусы Telegram, WhatsApp и Instagram видны в кабинете. Для работы каналов нужны настройка и допуск."},
+  {icon: "ai", title: "Семь AI-агентов", description: "Business Manager распределяет поручения между специалистами и собирает результаты."},
+  {icon: "channels", title: "Каналы под вашим контролем", description: "Подключения настраиваются отдельно для каждой организации."},
 ] as const;
 
 export default function Home() {
@@ -48,6 +51,17 @@ export default function Home() {
             <span className="principle-icon"><Icon name={icon}/></span>
             <h2>{title}</h2>
             <p>{description}</p>
+            {icon === "ai" && <ul className="public-agent-list" aria-label="Роли AI-команды">
+              {intelligenceTeam.map(({id, name}) => (
+                <li key={id}><AgentIcon id={id}/>{name}</li>
+              ))}
+            </ul>}
+            {icon === "channels" && <>
+              <ul className="public-channel-list" aria-label="Поддерживаемые каналы">
+                {channels.map(([id, title]) => <li key={id}><Icon name={id}/>{title}</li>)}
+              </ul>
+              <p className="public-channel-note">Статус подключения — в кабинете.</p>
+            </>}
           </article>
         ))}
       </section>
