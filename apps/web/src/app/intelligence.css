@@ -13,52 +13,13 @@
   padding-block:clamp(52px,7vw,100px);
   gap:clamp(28px,4.4vw,64px);
 }
-.landing > .hero {
-  --accent: #a7ceff;
-  --accent-hover: #c3dfff;
-  --on-accent: #102345;
-  position: relative;
-  isolation: isolate;
-  align-self: center;
-  padding-block: clamp(28px, 4vw, 58px);
-  color: #fff;
-}
-
-.landing > .hero::before,
-.landing > .hero::after {
-  position: absolute;
-  inset: 0 -16px;
-  z-index: -1;
-  content: "";
-  pointer-events: none;
-  border-radius: 22px;
-}
-
-.landing > .hero::before {
-  background: radial-gradient(ellipse at 86% 22%, #1b3d6c, transparent 72%),
-    linear-gradient(140deg, #101e38, #0a152a 75%);
-}
-
-.landing > .hero::after {
-  background-image: linear-gradient(#a7ceff26 1px, transparent 1px),
-    linear-gradient(90deg, #a7ceff26 1px, transparent 1px);
-  background-size: 32px 32px;
-  mask-image: radial-gradient(ellipse at 90% 37%, #000, transparent 77%);
-}
-
-.landing .hero h1 {
-  margin-block: 20px;
-  color: #fff;
-  font-size: clamp(35px, 4vw, 55px);
-  line-height: 1.06;
-  letter-spacing: -.05em;
-}
-.landing .hero h1 span {color: var(--accent)}
+.landing .hero h1 {font-size:clamp(38px,4.4vw,62px);line-height:1.06;letter-spacing:-.05em;margin-block:20px}
 .hero .eyebrow,.flow-heading .eyebrow {color:var(--accent);font-size:12px;font-weight:700;line-height:1.5;letter-spacing:.1em}
-.landing .hero-copy {color:#c4d7ee;font-size:clamp(16px,1.4vw,18px);line-height:1.65}
-.landing .hero-actions {margin-block:26px 0}
-.landing .hero-actions .button {display:inline-flex;align-items:center;justify-content:center;gap:12px;min-height:56px;padding:12px 24px;font-size:16px}
+.landing .hero-copy {max-width:54ch;font-size:clamp(16px,1.4vw,18px);line-height:1.65}
+.landing .hero-actions {flex-wrap:wrap;gap:10px;margin-block:26px 16px}
+.hero-actions .button {display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;padding:10px 14px}
 .hero-actions .button svg {width:16px;height:16px;flex:none}
+.landing .hero .small {max-width:60ch;font-size:13px;line-height:1.55}
 .landing .flow-card {
   padding:clamp(18px,2.25vw,32px);
   background:radial-gradient(ellipse at 94% 0%, color-mix(in srgb,var(--accent) 16%,transparent),transparent 68%),linear-gradient(155deg,var(--surface),color-mix(in srgb,var(--surface) 92%,var(--soft)));
@@ -101,7 +62,7 @@
 }
 @media (max-width:480px) {
   .landing .hero h1 {font-size:clamp(34px,10vw,42px)}
-  .landing .hero-actions .button {width:auto}
+  .landing .hero-actions .button {width:auto;flex:1 1 max-content}
   .landing .flow-step {grid-template-columns:36px minmax(0,1fr);gap:12px}
   .landing .step-number {width:36px;height:36px}
 }
@@ -322,89 +283,12 @@
   .team-usage dl {gap:8px 10px}
 }
 
-/* The glow and grid belong to the home page background. */
+/* Public overview and its demo share the same blue surfaces as the workspace. */
 body:has(> .landing) {
-  --landing-glow: #84baff;
-  --landing-grid: #4179bc;
-  --landing-glow-strength: 24%;
-  --landing-grid-strength: 9%;
-  --landing-base: linear-gradient(155deg, #fff 4%, #f7faff 42%, #ebf4ff 68%, #f8fbff 100%);
-  position: relative;
-  isolation: isolate;
   background-image:
-    radial-gradient(ellipse at 28% 22%, color-mix(in srgb, var(--landing-glow) 11%, transparent), transparent 48%),
-    var(--landing-base);
+    radial-gradient(ellipse at 74% 21%,color-mix(in srgb,var(--accent) 8%,transparent),transparent 43%),
+    radial-gradient(ellipse at 21% 46%,color-mix(in srgb,var(--accent) 4%,transparent),transparent 42%);
 }
-
-body:has(> .landing):where([data-theme=dark] *) {
-  --landing-glow: #589cff;
-  --landing-grid: #89b9ff;
-  --landing-glow-strength: 22%;
-  --landing-grid-strength: 12%;
-  --landing-base: linear-gradient(155deg, #0b1223 5%, #101f38 40%, #0c172c 67%, #0a111f 100%);
-}
-
-@media (prefers-color-scheme: dark) {
-  body:has(> .landing):where(:root:not([data-theme=light]) *) {
-    --landing-glow: #589cff;
-    --landing-grid: #89b9ff;
-    --landing-glow-strength: 22%;
-    --landing-grid-strength: 12%;
-    --landing-base: linear-gradient(155deg, #0b1223 5%, #101f38 40%, #0c172c 67%, #0a111f 100%);
-  }
-}
-
-body:has(> .landing)::before,
-body:has(> .landing)::after {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  pointer-events: none;
-}
-
-body:has(> .landing)::before {
-  inset: 72px 0 auto;
-  height: min(660px, 76%);
-  background: radial-gradient(ellipse 48% 55% at 74% 44%,
-    color-mix(in srgb, var(--landing-glow) var(--landing-glow-strength), transparent),
-    transparent 94%);
-}
-
-body:has(> .landing)::after {
-  inset: 80px 0 auto;
-  height: min(740px, 78%);
-  --landing-grid-line: color-mix(in srgb, var(--landing-grid) var(--landing-grid-strength), transparent);
-  background-image:
-    linear-gradient(var(--landing-grid-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--landing-grid-line) 1px, transparent 1px);
-  background-size: 48px 48px;
-  mask-image: radial-gradient(ellipse 54% 56% at 72% 35%, #000, transparent 95%);
-}
-
-@media (max-width: 800px) {
-  body:has(> .landing)::before {
-    height: 72%;
-    background: radial-gradient(ellipse 80% 39% at 62% 67%,
-      color-mix(in srgb, var(--landing-glow) var(--landing-glow-strength), transparent),
-      transparent 96%);
-  }
-
-  body:has(> .landing)::after {
-    height: 74%;
-    background-size: 36px 36px;
-    mask-image: radial-gradient(ellipse 76% 45% at 65% 60%, #000, transparent 95%);
-  }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  body:has(> .landing)::before { animation: landing-glow 20s ease-in-out infinite alternate; }
-
-  @keyframes landing-glow {
-    from { opacity: .68; }
-    to { opacity: 1; }
-  }
-}
-
 .landing .flow-bottom {color:var(--muted)}
 .flow-steps {position:relative}
 .flow-steps::before {
