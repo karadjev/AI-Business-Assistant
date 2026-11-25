@@ -1,0 +1,67 @@
+"use client";
+
+import Link from "next/link";
+import {useRouter} from "next/navigation";
+import {useRef, useState, type FormEvent} from "react";
+import {csrf} from "./IdentityForm";
+
+const profiles = [
+  {id: "vehicle_service_hybrid", model: "hybrid", industry: "vehicle_service", label: "Автосервис с продажей запчастей"},
+  {id: "vehicle_service", model: "service", industry: "vehicle_service", label: "Автосервис без продажи запчастей"},
+  {id: "personal_services", model: "service", industry: "personal_services", label: "Персональные услуги"},
+  {id: "real_estate", model: "agency", industry: "real_estate", label: "Недвижимость"},
+];
+
+type Profile = {model: string; industry: string; revision: number};
+
+export function BusinessOnboarding({org, profile}: {org: string; profile: Profile}) {
+  const router = useRouter();
+  const submitting = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const current = profiles.find(item => item.model === profile.model && item.industry === profile.industry);
+  const target = `/dashboard/ai-settings?org=${org}`;
+
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const selected = profiles.find(item => item.id === new FormData(event.currentTarget).get("profile"));
+    if (!selected || submitting.current) return;
+    submitting.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      if (current?.id !== selected.id) {
+        const response = await fetch(`/api/v1/organizations/${org}/agent-business-profile`, {
+          method: "PATCH",
+          headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf()},
+          body: JSON.stringify({model: selected.model, industry: selected.industry, revision: profile.revision}),
+          signal: AbortSignal.timeout(10000),
+        });
+        if (response.status === 401) {router.replace("/login"); return;}
+        if (!response.ok) {
+          const payload = await response.json().catch(() => null);
+          throw new Error(payload?.error?.message ?? "Не удалось сохранить профиль. Обновите страницу и проверьте выбранную отрасль.");
+        }
+      }
+      router.push(target);
+      router.refresh();
+    } catch (failure) {
+      setError(failure instanceof Error && failure.name === "Error"
+        ? failure.message : "Не удалось получить ответ. Обновите страницу и проверьте выбранную отрасль.");
+      submitting.current = false;
+      setBusy(false);
+    }
+  }
+
+  return <section className="module-card">
+    <p>Профиль определяет доступные действия AI-команды. В автосервисе каталог используется для проверки запчастей в заявках на услуги.</p>
+    <form className="identity-form" onSubmit={save}>
+      <label>Отрасль и профиль<select name="profile" defaultValue={current?.id ?? profiles[0].id} disabled={busy}>
+        {profiles.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+      </select></label>
+      <button className="primary" disabled={busy}>{busy ? "Сохраняем…" : "Сохранить профиль и открыть AI-команду"}</button>
+      {error && <p className="form-error" role="alert">{error}</p>}
+    </form>
+    <Link prefetch={false} href="/dashboard/organizations">Мои организации</Link>
+  </section>;
+}

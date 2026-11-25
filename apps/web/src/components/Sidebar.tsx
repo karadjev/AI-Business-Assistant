@@ -7,7 +7,7 @@ import {Icon, type IconName} from "./ProductUI";
 type Item = {path: string; title: string; icon: IconName};
 const main: Item[] = [{path:"",title:"Главная",icon:"home"},{path:"orders",title:"Заказы",icon:"orders"},{path:"products",title:"Товары",icon:"catalog"},{path:"conversations",title:"Диалоги",icon:"chat"}];
 const management: Item[] = [{path:"ai-settings",title:"AI-ассистент",icon:"ai"},{path:"integrations",title:"Каналы связи",icon:"channels"},{path:"settings",title:"Настройки",icon:"settings"}];
-const extra = [["onboarding","Начало работы"],["organizations","Мои магазины"],["catalog","Качество каталога"],["inventory","Остатки"],["categories","Категории"],["ai-playground","Тестовый чат"],["demo","Демонстрация"]];
+const extra = [["workshop","Заявки автосервиса"],["onboarding","Начало работы"],["organizations","Мои магазины"],["catalog","Качество каталога"],["inventory","Остатки"],["categories","Категории"],["ai-playground","Тестовый чат"],["demo","Демонстрация"]];
 export function Sidebar() {
   const org = useSearchParams().get("org");
   const pathname = usePathname();
@@ -32,6 +32,6 @@ export function Sidebar() {
         <Link prefetch={false} href="/status">Состояние системы</Link>
       </nav>
     </details>
-    <div className="sidebar-footer"><span className="status-badge status-neutral">Тестовый режим</span><small>Решения остаются за вами</small></div>
+    <div className="sidebar-footer"><span className="status-badge status-neutral">{part === "workshop" ? "Рабочий контур" : "Тестовый режим"}</span><small>Решения остаются за вами</small></div>
   </aside>;
 }

@@ -2,13 +2,18 @@ package auth
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/jackc/pgx/v5"
 	"net"
+	"net/mail"
 	"net/smtp"
 	"time"
+
+	"github.com/jackc/pgx/v5"
+
+	"github.com/karadjev/AI-Business-Assistant/apps/api/internal/config"
 )
 
 type emailPayload struct {
@@ -33,7 +38,7 @@ func (s *Service) DeliverOne(ctx context.Context) (bool, error) {
 		e = json.Unmarshal(plain, &mail)
 	}
 	if e == nil {
-		e = send(ctx, s.Config.SMTPAddr, mail)
+		e = send(ctx, s.Config.SMTPAddr, s.Config.SMTP, mail)
 	}
 	if e != nil {
 		_, _ = s.Pool.Exec(ctx, `UPDATE platform.email_outbox SET lease_until=NULL,available_at=now()+interval '15 seconds',status=CASE WHEN attempts>=5 THEN 'failed' ELSE 'pending' END WHERE id=$1`, id)
@@ -45,22 +50,51 @@ func (s *Service) DeliverOne(ctx context.Context) (bool, error) {
 	}
 	return true, nil
 }
-func send(ctx context.Context, addr string, msg emailPayload) error {
+func send(ctx context.Context, addr string, transport config.SMTP, msg emailPayload) error {
+	recipient, e := Email(msg.To)
+	if e != nil {
+		return e
+	}
 	conn, e := (&net.Dialer{Timeout: 3 * time.Second}).DialContext(ctx, "tcp", addr)
 	if e != nil {
 		return e
 	}
 	defer conn.Close()
-	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
-	client, e := smtp.NewClient(conn, "mailpit")
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
+	deadline := time.Now().Add(8 * time.Second)
+	if until, ok := ctx.Deadline(); ok && until.Before(deadline) {
+		deadline = until
+	}
+	if e = conn.SetDeadline(deadline); e != nil {
+		return e
+	}
+	host := "mailpit"
+	if transport.ServerName != "" {
+		host = transport.ServerName
+	}
+	client, e := smtp.NewClient(conn, host)
 	if e != nil {
 		return e
 	}
 	defer client.Close()
-	if e = client.Mail("no-reply@ai-business-assistant.test"); e != nil {
+	from := mail.Address{Name: "AI Business Assistant", Address: "no-reply@ai-business-assistant.test"}
+	if transport.ServerName != "" {
+		if ok, _ := client.Extension("STARTTLS"); !ok {
+			return errors.New("SMTP server does not advertise STARTTLS")
+		}
+		if e = client.StartTLS(&tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}); e != nil {
+			return e
+		}
+		if e = client.Auth(smtp.PlainAuth("", transport.Username, transport.Password, host)); e != nil {
+			return e
+		}
+		from = transport.From
+	}
+	if e = client.Mail(from.Address); e != nil {
 		return e
 	}
-	if e = client.Rcpt(msg.To); e != nil {
+	if e = client.Rcpt(recipient); e != nil {
 		return e
 	}
 	writer, e := client.Data()
@@ -71,12 +105,15 @@ func send(ctx context.Context, addr string, msg emailPayload) error {
 	if msg.Kind == "password_reset" {
 		subject, body = "Reset your password", "Reset your password using this one-time link (expires shortly):\r\n"
 	}
-	_, e = fmt.Fprintf(writer, "From: AI Business Assistant <no-reply@ai-business-assistant.test>\r\nTo: %s\r\nSubject: %s\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s%s\r\n", msg.To, subject, body, msg.Link)
+	_, e = fmt.Fprintf(writer, "From: %s\r\nTo: %s\r\nSubject: %s\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s%s\r\n", from.String(), recipient, subject, body, msg.Link)
 	if e != nil {
 		return e
 	}
 	if e = writer.Close(); e != nil {
 		return e
 	}
-	return client.Quit()
+	// Closing DATA with a success reply is the SMTP delivery boundary.
+	// A failed QUIT cannot turn an accepted message into a retry.
+	_ = client.Quit()
+	return nil
 }

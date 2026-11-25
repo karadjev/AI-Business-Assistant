@@ -20,6 +20,8 @@ func Error(e error) error {
 	var p *pgconn.PgError
 	if errors.As(e, &p) {
 		switch p.Code {
+		case "P4L01":
+			return auth.CommercialAllowance(p.Detail)
 		case "23505":
 			return Failure(409, "IDEMPOTENCY_CONFLICT", "Повторный ключ или ресурс")
 		case "23503", "23514", "22003", "22P02":

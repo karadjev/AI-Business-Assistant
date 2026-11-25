@@ -18,5 +18,15 @@ export default async function Page({searchParams}:{searchParams:Promise<{org?:st
  else try{const response=await request(`organizations/${org.id}/integrations/instagram`);if(response.ok){const result=await response.json();label=instagramStatuses[result.connection?.status??"not_connected"]??"Состояние неизвестно";}}catch{label="Состояние неизвестно";}
  return <section className="channel-card"><div className="channel-card-top"><span className="channel-card-symbol" aria-hidden="true">I</span><h2>Instagram</h2><StatusBadge tone="neutral">{label}</StatusBadge></div><p>Instagram Direct для профессиональных аккаунтов Business и Creator.</p><p className="channel-note">Только MOCK. Реальная авторизация и отправка выключены.</p><Link prefetch={false} className="button secondary" href={`/dashboard/integrations/instagram?org=${encodeURIComponent(org.id)}`}>Настройки Instagram <span aria-hidden="true">→</span></Link></section>;
  })()}</div>}
+ {org?.role==="owner"&&<section className="panel" aria-label="Подготовка рабочих каналов">
+  <h2>Подготовка рабочих каналов</h2>
+  <p>Проверка реальных подключений требует отдельного допуска. Настройки тестового контура показаны выше.</p>
+  <ul>
+    <li>Telegram · выделенный бот, проверка токена через getMe и отдельный секрет HTTPS webhook. <a href="https://core.telegram.org/bots/api#setwebhook">Инструкция Telegram</a></li>
+    <li>WhatsApp · аккаунт WABA, Phone Number ID, системный токен, App Secret и verify token. <a href="https://developers.facebook.com/documentation/business-messaging/whatsapp/get-started">Инструкция Meta</a></li>
+    <li>Instagram · профессиональный аккаунт, OAuth приложения Meta и разрешение на сообщения. <a href="https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login">Инструкция Meta</a></li>
+  </ul>
+  <p>Передавайте секреты через защищённую серверную конфигурацию.</p>
+ </section>}
  </main>;
 }

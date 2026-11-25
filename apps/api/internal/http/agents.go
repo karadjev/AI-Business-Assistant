@@ -15,6 +15,111 @@ func agentRoutes(register func(string, string, func(http.ResponseWriter, *http.R
 	tenant := func(r *http.Request, session auth.Session) catalog.Tenant {
 		return catalog.Tenant{OrganizationID: r.PathValue("id"), Session: session}
 	}
+	register("GET", root+"/workshop/manager", func(w http.ResponseWriter, r *http.Request, session auth.Session) {
+		out, err := s.ManagerChat(r.Context(), tenant(r, session))
+		if err != nil {
+			fail(w, r, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	register("POST", root+"/workshop/manager", func(w http.ResponseWriter, r *http.Request, session auth.Session) {
+		var in agentruntime.ManagerMessage
+		if !decode(w, r, &in) {
+			return
+		}
+		if err := s.SendManagerMessage(r.Context(), tenant(r, session), in); err != nil {
+			fail(w, r, err)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	})
+	register("GET", root+"/workshop", func(w http.ResponseWriter, r *http.Request, session auth.Session) {
+		out, err := s.Workshop(r.Context(), tenant(r, session))
+		if err != nil {
+			fail(w, r, err)
+			return
+		}
+		writeJSON(w, 200, out)
+	})
+	register("POST", root+"/workshop/customers", func(w http.ResponseWriter, r *http.Request, session auth.Session) {
+		var in struct {
+			Name string `json:"name"`
+		}
+		if !decode(w, r, &in) {
+			return
+		}
+		id, err := s.CreateWorkshopCustomer(r.Context(), tenant(r, session), in.Name)
+		if err != nil {
+			fail(w, r, err)
+			return
+		}
+		writeJSON(w, 201, map[string]string{"id": id})
+	})
+	register("POST", root+"/workshop/requests", func(w http.ResponseWriter, r *http.Request, session auth.Session) {
+		var in agentruntime.WorkshopRequest
+		if !decode(w, r, &in) {
+			return
+		}
+		id, err := s.SubmitWorkshop(r.Context(), tenant(r, session), in)
+		if err != nil {
+			fail(w, r, err)
+			return
+		}
+		writeJSON(w, 202, map[string]string{"id": id})
+	})
+	register("POST", root+"/workshop/requests/{request}/marketing", func(w http.ResponseWriter, r *http.Request, session auth.Session) {
+		var input agentruntime.WorkshopMarketingInput
+		if !decode(w, r, &input) {
+			return
+		}
+		id, err := s.WorkshopMarketingAction(r.Context(), tenant(r, session), r.PathValue("request"), input)
+		if err != nil {
+			fail(w, r, err)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]string{"id": id})
+	})
+	register("POST", root+"/workshop/requests/{request}/financials", func(w http.ResponseWriter, r *http.Request, session auth.Session) {
+		var input agentruntime.WorkshopFinancialInput
+		if !decode(w, r, &input) {
+			return
+		}
+		id, err := s.RecordWorkshopFinancials(r.Context(), tenant(r, session), r.PathValue("request"), input)
+		if err != nil {
+			fail(w, r, err)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]string{"id": id})
+	})
+	register("POST", root+"/workshop/requests/{request}/close", func(w http.ResponseWriter, r *http.Request, session auth.Session) {
+		var in struct {
+			Operation string `json:"operation"`
+		}
+		if !decode(w, r, &in) {
+			return
+		}
+		id, err := s.ProposeWorkshopClose(r.Context(), tenant(r, session), r.PathValue("request"), in.Operation)
+		if err != nil {
+			fail(w, r, err)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]string{"id": id})
+	})
+	register("POST", root+"/workshop/approvals/{approval}/decision", func(w http.ResponseWriter, r *http.Request, session auth.Session) {
+		var in struct {
+			Decision string `json:"decision"`
+			Hash     string `json:"parameters_hash"`
+		}
+		if !decode(w, r, &in) {
+			return
+		}
+		if err := s.DecideWorkshop(r.Context(), tenant(r, session), r.PathValue("approval"), in.Decision, in.Hash); err != nil {
+			fail(w, r, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	register("GET", root+"/agent-team", func(w http.ResponseWriter, r *http.Request, session auth.Session) {
 		team, err := s.Team(r.Context(), tenant(r, session))
 		if err != nil {

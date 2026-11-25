@@ -63,6 +63,22 @@ function measure(form: FormData, key: string, allowZero = false) {
   return value;
 }
 
+// The booking API validates the explicit offset against the service timezone.
+function formatServiceInstant(value: Date, timeZone: string) {
+  const formatter = new Intl.DateTimeFormat("en-GB", {
+    timeZone, timeZoneName: "longOffset", calendar: "iso8601", numberingSystem: "latn",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+  });
+  const parts = Object.fromEntries(formatter.formatToParts(value).map(part => [part.type, part.value]));
+  const zoneName = parts.timeZoneName;
+  const offset = zoneName === "GMT" || zoneName === "GMT+00:00" ? "Z" : zoneName.slice(3);
+  if (offset !== "Z" && !/^[+-]\d{2}:\d{2}$/.test(offset)) {
+    throw new Error("Не удалось определить смещение часового пояса услуги.");
+  }
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}${offset}`;
+}
+
 function serviceSelection(form: FormData, offering: Offering) {
   const slot = text(form, "slot");
   const start = new Date(slot);
@@ -73,7 +89,8 @@ function serviceSelection(form: FormData, offering: Offering) {
   }
   const duration = number(form, "duration", offering.min_minutes, offering.max_minutes);
   return {offering_id: offering.id, offering_revision: offering.revision, timezone: offering.timezone,
-    starts_at: start.toISOString(), ends_at: new Date(start.getTime() + duration * 60_000).toISOString(), units: 1};
+    starts_at: formatServiceInstant(start, offering.timezone),
+    ends_at: formatServiceInstant(new Date(start.getTime() + duration * 60_000), offering.timezone), units: 1};
 }
 
 export function buildRequirements(scenario: Scenario, form: FormData, offering?: Offering) {

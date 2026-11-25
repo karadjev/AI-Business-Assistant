@@ -46,7 +46,7 @@ func readJSON(ctx context.Context, tx pgx.Tx, sql string, args ...any) (json.Raw
 	return json.RawMessage(raw), nil
 }
 func (s Service) detail(ctx context.Context, tx pgx.Tx, id string) (json.RawMessage, error) {
-	return readJSON(ctx, tx, `SELECT (to_jsonb(c)||jsonb_build_object('mode',$2::text,'model',$3::text,'channel_delivery',(SELECT coalesce(jsonb_agg(to_jsonb(d)),'[]'::jsonb) FROM (SELECT id,status,provider_id,created_at FROM platform.channel_outbox WHERE conversation_id=c.id ORDER BY created_at DESC LIMIT 20)d),'channel_window_until',(SELECT window_until FROM platform.channel_principals WHERE conversation_id=c.id),'messages',(SELECT coalesce(jsonb_agg(to_jsonb(x)-'request_hash' ORDER BY x.created_at,x.id),'[]'::jsonb) FROM (SELECT * FROM platform.messages WHERE conversation_id=c.id ORDER BY created_at DESC,id LIMIT 40) x),'events',(SELECT coalesce(jsonb_agg(to_jsonb(e) ORDER BY e.created_at,e.id),'[]'::jsonb) FROM platform.conversation_events e WHERE conversation_id=c.id)))-'in_flight'-'lease_until' FROM platform.conversations c WHERE c.id=$1`, id, s.Provider.Mode(), s.Config.Model)
+	return readJSON(ctx, tx, `SELECT (to_jsonb(c)||jsonb_build_object('mode',$2::text,'model',$3::text,'channel_delivery',(SELECT coalesce(jsonb_agg(to_jsonb(d)),'[]'::jsonb) FROM (SELECT id,status,provider_id,created_at FROM platform.channel_outbox WHERE conversation_id=c.id ORDER BY created_at DESC LIMIT 20)d),'channel_window_until',(SELECT window_until FROM platform.channel_principals WHERE conversation_id=c.id),'messages',(SELECT coalesce(jsonb_agg(to_jsonb(x)-'request_hash' ORDER BY x.created_at,x.id),'[]'::jsonb) FROM (SELECT * FROM platform.messages WHERE conversation_id=c.id ORDER BY created_at DESC,id LIMIT 40) x),'events',(SELECT coalesce(jsonb_agg(to_jsonb(e) ORDER BY e.created_at,e.id),'[]'::jsonb) FROM platform.conversation_events e WHERE conversation_id=c.id)))-'in_flight'-'lease_until'-'assignee_id' FROM platform.conversations c WHERE c.id=$1`, id, s.Provider.Mode(), s.Config.Model)
 }
 func (s Service) Create(ctx context.Context, t catalog.Tenant) (json.RawMessage, error) {
 	tx, e := s.begin(ctx, t)
@@ -105,7 +105,7 @@ func (s Service) ListChannel(ctx context.Context, t catalog.Tenant, page int, ch
 		return nil, e
 	}
 	defer tx.Rollback(ctx)
-	return readJSON(ctx, tx, `SELECT jsonb_build_object('items',coalesce(jsonb_agg(to_jsonb(x)-'in_flight'-'lease_until'),'[]'::jsonb)) FROM (SELECT * FROM platform.conversations WHERE expires_at>now() AND ($2='' OR channel=$2) ORDER BY updated_at DESC,id LIMIT 20 OFFSET $1) x`, (page-1)*20, channel)
+	return readJSON(ctx, tx, `SELECT jsonb_build_object('items',coalesce(jsonb_agg(to_jsonb(x)-'in_flight'-'lease_until'-'assignee_id'),'[]'::jsonb)) FROM (SELECT * FROM platform.conversations WHERE expires_at>now() AND ($2='' OR channel=$2) ORDER BY updated_at DESC,id LIMIT 20 OFFSET $1) x`, (page-1)*20, channel)
 }
 func event(ctx context.Context, tx pgx.Tx, t catalog.Tenant, id, kind string) error {
 	_, e := tx.Exec(ctx, `INSERT INTO platform.conversation_events(id,organization_id,conversation_id,actor_id,kind) VALUES($1,$2,$3,$4,$5)`, auth.UUID(), t.OrganizationID, id, actor(t), kind)

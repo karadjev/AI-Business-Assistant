@@ -9,7 +9,46 @@ import {Button, Input, useConfirmation} from "./UI";
 import {Icon} from "./ProductUI";
 import {money} from "@/lib/catalog";
 import {type WorkflowProps,type Conversation,type Quote,type Card,type Order,statuses,idempotencyKey} from "@/lib/workflows";
-export function SandboxForm(){const router=useRouter();const [error,setError]=useState("");const [busy,setBusy]=useState(false);return <section className="module-card"><h2>Отдельный тестовый магазин</h2><p>Будет создан пустой каталог и независимый склад. Используйте только синтетические товары и сообщения.</p><form className="identity-form" onSubmit={async e=>{e.preventDefault();setBusy(true);setError("");const name=String(new FormData(e.currentTarget).get("name"));try{const r=await mutation("/api/v1/organizations/test","POST",{name});router.push("/dashboard/products?org="+r.id);router.refresh();}catch(e){if((e as {code?:string}).code==="UNAUTHORIZED")router.push("/login");setError(e instanceof Error?e.message:"Сервис недоступен");}finally{setBusy(false);}}}><label>Название тестового магазина<input name="name" required maxLength={120} defaultValue="Тестовый магазин — синтетические данные"/></label><button disabled={busy}>Создать тестовый магазин</button>{error&&<p role="alert" className="form-error">{error}</p>}</form></section>}
+export function SandboxForm({businessOnboarding = false}: {businessOnboarding?: boolean}) {
+ const router = useRouter();
+ const [error, setError] = useState("");
+ const [busy, setBusy] = useState(false);
+ const creating = useRef(false);
+ return <section className="module-card">
+  {businessOnboarding
+   ? <p>В кабинете доступны AI-агенты в режиме тестирования. Используйте синтетические данные. Реальные отправки и торговые каналы отключены.</p>
+   : <><h2>Отдельный тестовый магазин</h2><p>Будет создан пустой каталог и независимый склад. Используйте только синтетические товары и сообщения.</p></>}
+  <form className="identity-form" onSubmit={async e => {
+   e.preventDefault();
+   if (creating.current) return;
+   const name = String(new FormData(e.currentTarget).get("name")).trim();
+   if (!name) {setError("Укажите название организации."); return;}
+   creating.current = true;
+   setBusy(true);
+   setError("");
+   try {
+    const r = await mutation("/api/v1/organizations/test", "POST", {name});
+    router.push(businessOnboarding
+     ? `/dashboard/onboarding?org=${r.id}&flow=business`
+     : `/dashboard/products?org=${r.id}`);
+    router.refresh();
+   } catch (e) {
+    if ((e as {code?:string}).code === "UNAUTHORIZED") router.push("/login");
+    setError(e instanceof Error ? e.message : "Сервис недоступен");
+    creating.current = false;
+    setBusy(false);
+   }
+  }}>
+   <label>{businessOnboarding ? "Название организации" : "Название тестового магазина"}
+    <input name="name" required maxLength={120}
+     defaultValue={businessOnboarding ? "" : "Тестовый магазин — синтетические данные"}/>
+   </label>
+   <button disabled={busy}>{businessOnboarding ? "Создать и выбрать отрасль" : "Создать тестовый магазин"}</button>
+   {error && <p role="alert" className="form-error">{error}</p>}
+  </form>
+ </section>;
+}
+
 async function mutation(path:string,method:string,body:unknown){const csrf=document.cookie.split(";").map(x=>x.trim()).find(x=>x.startsWith("aba_csrf="))?.slice(9)??"";let r:Response;try{r=await fetch(path,{method,headers:{"Content-Type":"application/json","X-CSRF-Token":csrf},body:JSON.stringify(body)});}catch{throw new Error("Не удалось получить ответ сервера. Обновите данные и проверьте статус перед повторным действием.");}const result=await r.json();if(r.status===401){throw Object.assign(new Error("Войдите снова"),{code:"UNAUTHORIZED"});}if(!r.ok)throw Object.assign(new Error(result.error?.message??`Ошибка ${r.status}`),{code:result.error?.code});return result;}
 export function Workflows(props:WorkflowProps){const {org,organizations,view,orders=[],order,conversations=[],mode}=props;const router=useRouter();const search=useSearchParams();const pathname=usePathname();const [chat,setChat]=useState<Conversation|undefined>(props.conversation);const [quote,setQuote]=useState<Quote|null>(null);const [consent,setConsent]=useState(false);const [orderID,setOrderID]=useState("");const [error,setError]=useState(props.error??"");const [busy,setBusy]=useState(false);const [cart,setCart]=useState<{card:Card;quantity:number}[]>([]);const root=`/api/v1/organizations/${org.id}`;const suffix=`?org=${org.id}`;
  function orderPage(page:number){const params=new URLSearchParams(search);params.set("org",org.id);params.set("page",String(page));return "?"+params.toString()}

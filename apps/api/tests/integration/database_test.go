@@ -63,7 +63,7 @@ func TestDatabaseAndMigrations(t *testing.T) {
 	if e = migrate.Run(ctx, migrationDSN, "up"); e != nil {
 		t.Fatal(e)
 	}
-	t.Run("instagram-schema-up", func(t *testing.T) { testInstagramSchemaStage22(t, conn, ctx, 31) })
+	t.Run("instagram-schema-up", func(t *testing.T) { testInstagramSchemaStage22(t, conn, ctx, 38) })
 	if e = migrate.Run(ctx, migrationDSN, "up"); e != nil {
 		t.Fatal("repeat up failed", e)
 	}
@@ -91,14 +91,34 @@ func TestDatabaseAndMigrations(t *testing.T) {
 	if e = migrate.Run(ctx, migrationDSN, "down"); e != nil {
 		t.Fatal(e)
 	}
+	if e = migrate.Run(ctx, migrationDSN, "down"); e != nil {
+		t.Fatal(e)
+	}
+	if e = migrate.Run(ctx, migrationDSN, "down"); e != nil {
+		t.Fatal(e)
+	}
+	if e = migrate.Run(ctx, migrationDSN, "down"); e != nil {
+		t.Fatal(e)
+	}
+	if e = migrate.Run(ctx, migrationDSN, "down"); e != nil {
+		t.Fatal(e)
+	}
+	if e = migrate.Run(ctx, migrationDSN, "down"); e != nil {
+		t.Fatal(e)
+	}
+	if e = migrate.Run(ctx, migrationDSN, "down"); e != nil {
+		t.Fatal("inbox schema down", e)
+	}
+	if e = migrate.Run(ctx, migrationDSN, "down"); e != nil {
+		t.Fatal("commercial schema down", e)
+	}
 	t.Run("vehicle-service-hybrid-schema-down", func(t *testing.T) {
 		var version int
 		if err := conn.QueryRow(ctx, "SELECT version FROM platform.service_metadata WHERE singleton").Scan(&version); err != nil || version != 30 {
 			t.Fatalf("vehicle service hybrid rollback: version=%d err=%v", version, err)
 		}
 	})
-	// The newly added password-reset migration sits above the vehicle-service
-	// checkpoint and is reverted separately before testing migration 00030.
+	// Continue down from schema 30 to schema 28.
 	if e = migrate.Run(ctx, migrationDSN, "down"); e != nil {
 		t.Fatal(e)
 	}
@@ -242,7 +262,7 @@ func TestDatabaseAndMigrations(t *testing.T) {
 	if e = migrate.Run(ctx, migrationDSN, "up"); e != nil {
 		t.Fatal(e)
 	}
-	t.Run("instagram-schema-reapply", func(t *testing.T) { testInstagramSchemaStage22(t, conn, ctx, 31) })
+	t.Run("instagram-schema-reapply", func(t *testing.T) { testInstagramSchemaStage22(t, conn, ctx, 38) })
 	testIdentity(t, database, conn, ctx)
 	testCatalog(t, database, conn, ctx)
 	testStage5(t, database, conn, ctx)
@@ -270,8 +290,22 @@ func TestDatabaseAndMigrations(t *testing.T) {
 	if e = conn.QueryRow(ctx, snapshot).Scan(&before); e != nil {
 		t.Fatal(e)
 	}
-	// Remove password-reset schema 31 separately before exercising the existing
-	// vehicle-service schema rollback and populated draft-history refusal.
+	// Remove unused workshop migrations and the password-reset migration first.
+	if e = migrate.Run(ctx, migrationDSN, "down"); e != nil {
+		t.Fatalf("empty manager schema rollback: %v", e)
+	}
+	if e = migrate.Run(ctx, migrationDSN, "down"); e != nil {
+		t.Fatalf("empty marketing schema rollback: %v", e)
+	}
+	if e = migrate.Run(ctx, migrationDSN, "down"); e != nil {
+		t.Fatalf("empty finance schema rollback: %v", e)
+	}
+	if e = migrate.Run(ctx, migrationDSN, "down"); e != nil {
+		t.Fatalf("empty delegation schema rollback: %v", e)
+	}
+	if e = migrate.Run(ctx, migrationDSN, "down"); e != nil {
+		t.Fatalf("empty workshop schema rollback: %v", e)
+	}
 	if e = migrate.Run(ctx, migrationDSN, "down"); e != nil {
 		t.Fatalf("password-reset schema rollback: %v", e)
 	}
@@ -291,6 +325,21 @@ func TestDatabaseAndMigrations(t *testing.T) {
 	t.Run("stage262-industry", func(t *testing.T) { testStage262Industry(t, database, conn, ctx) })
 	t.Run("stage262-service-closure", func(t *testing.T) { testStage262ServiceClosure(t, database, conn, ctx) })
 	testAudit8A(t, database, conn, ctx)
+	if err := migrate.Run(ctx, migrationDSN, "down"); err != nil {
+		t.Fatalf("empty manager schema rollback: %v", err)
+	}
+	if err := migrate.Run(ctx, migrationDSN, "down"); err != nil {
+		t.Fatalf("empty marketing schema rollback: %v", err)
+	}
+	if err := migrate.Run(ctx, migrationDSN, "down"); err != nil {
+		t.Fatalf("empty finance schema rollback: %v", err)
+	}
+	if err := migrate.Run(ctx, migrationDSN, "down"); err != nil {
+		t.Fatalf("empty delegation schema rollback: %v", err)
+	}
+	if err := migrate.Run(ctx, migrationDSN, "down"); err != nil {
+		t.Fatalf("empty workshop schema rollback: %v", err)
+	}
 	if err := migrate.Run(ctx, migrationDSN, "down"); err != nil {
 		t.Fatalf("password-reset rollback: %v", err)
 	}

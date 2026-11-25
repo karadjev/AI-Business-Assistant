@@ -20,7 +20,7 @@ const constructionDelegation = "delegate_construction"
 const serviceDelegation = "delegate_service"
 
 func delegationParent(action string) bool {
-	return action == autoPartsDelegation || action == constructionDelegation || action == serviceDelegation || action == realEstateDelegation || action == propertyViewingDelegation || action == conversationDelegation
+	return action == workshopMarketingManager || action == workshopFinanceManager || action == workshopManager || action == autoPartsDelegation || action == constructionDelegation || action == serviceDelegation || action == realEstateDelegation || action == propertyViewingDelegation || action == conversationDelegation
 }
 
 type ConstructionRequirements struct {

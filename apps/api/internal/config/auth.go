@@ -12,6 +12,7 @@ type Auth struct {
 	EmailKey                             []byte
 	CatalogRetentionKey                  []byte
 	SMTPAddr                             string
+	SMTP                                 SMTP
 	Secure                               bool
 	EmailActionsDisabled                 bool
 	SessionTTL, IdleTTL, VerificationTTL time.Duration
@@ -40,8 +41,9 @@ func LoadAuth(get func(string) string, env string) (Auth, error) {
 			return Auth{}, errors.New("CATALOG_RETENTION_KEY must be 32 bytes encoded as hex")
 		}
 	}
-	if c.SMTPAddr != "mailpit:1025" && c.SMTPAddr != "127.0.0.1:1025" && c.SMTPAddr != "localhost:1025" {
-		return Auth{}, errors.New("SMTP_ADDR must use the local dev email sink")
+	c.SMTP, e = loadSMTP(get, c.SMTPAddr, c.Secure)
+	if e != nil {
+		return Auth{}, e
 	}
 	for _, entry := range []struct {
 		key    string

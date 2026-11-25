@@ -1,5 +1,14 @@
 function catalogMethods(path:string):string[]|undefined{
  const root="v1/organizations/[0-9a-f-]{36}";
+ if(new RegExp(`^${root}/commercial$`).test(path))return ["GET","PUT"];
+ if(new RegExp(`^${root}/team$`).test(path))return ["GET","POST"];
+ if(new RegExp(`^${root}/workspace-usage$`).test(path))return ["GET"];
+ if(new RegExp(`^${root}/inbox$`).test(path))return ["GET","POST"];
+ if(new RegExp(`^${root}/conversations/[0-9a-f-]{36}/inbox$`).test(path))return ["GET"];
+ if(new RegExp(`^${root}/conversations/[0-9a-f-]{36}/inbox/(assignee|[0-9a-f-]{36})$`).test(path))return ["POST"];
+ if(new RegExp(`^${root}/workshop/manager$`).test(path))return ["GET","POST"];
+ if(new RegExp(`^${root}/workshop$`).test(path))return ["GET"];
+ if(new RegExp(`^${root}/workshop/(customers|requests|requests/[0-9a-f-]{36}/(close|financials|marketing)|approvals/[0-9a-f-]{36}/decision)$`).test(path))return ["POST"];
  if(new RegExp(`^${root}/integrations/instagram$`).test(path))return ["GET"];
  if(new RegExp(`^${root}/integrations/instagram/(oauth/start|disconnect)$`).test(path))return ["POST"];
  if(new RegExp(`^${root}/integrations/instagram/(oauth/callback|webhook-status)$`).test(path))return ["GET"];

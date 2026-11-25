@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/karadjev/AI-Business-Assistant/apps/api/internal/agent"
 	af "github.com/karadjev/AI-Business-Assistant/apps/api/internal/agentfoundation"
 	"github.com/karadjev/AI-Business-Assistant/apps/api/internal/auth"
@@ -22,7 +24,7 @@ type claimed struct {
 
 // ProcessOne shares the existing worker lifecycle. Claim and finish are fenced
 // by an agent-only queue lease. Every currently admitted operation is a read
-// or an internal draft, so interrupted attempts have no external side effects.
+// or an internal operation. Workshop stock, completion and audit commit atomically.
 func (s Service) ProcessOne(ctx context.Context) (bool, error) {
 	if len(s.Key) != 32 {
 		return false, auth.Unavailable()
@@ -41,6 +43,17 @@ func (s Service) ProcessOne(ctx context.Context) (bool, error) {
 	}
 	work, stop := context.WithDeadline(ctx, job.Deadline)
 	defer stop()
+	switch job.Action {
+	case "workshop_inspect", "workshop_reserve", "workshop_release", "workshop_consume":
+		var finished bool
+		if err := s.Pool.QueryRow(work, "SELECT platform.workshop_execute($1,$2,$3)", job.ID, lease, job.ExecutionID).Scan(&finished); err != nil {
+			return true, err
+		}
+		if !finished {
+			return true, errors.New("workshop execution lease or permission rejected")
+		}
+		return true, nil
+	}
 	result, err := s.run(work, job, lease)
 	finish, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
 	defer cancel()
@@ -85,7 +98,18 @@ func (s Service) ProcessOne(ctx context.Context) (bool, error) {
 		}
 	}
 	var ok bool
-	finishErr := s.Pool.QueryRow(finish, "SELECT platform.agent_finish($1,$2,$3,$4::jsonb,$5,$6)", job.ID, lease, job.ExecutionID, payload, failure, retry).Scan(&ok)
+	var finishErr error
+	if job.Action == workshopManager && failure == nil {
+		finishErr = s.Pool.QueryRow(finish, "SELECT platform.workshop_manager_finish($1,$2,$3,$4::jsonb)", job.ID, lease, job.ExecutionID, payload).Scan(&ok)
+	} else {
+		finishErr = s.Pool.QueryRow(finish, "SELECT platform.agent_finish($1,$2,$3,$4::jsonb,$5,$6)", job.ID, lease, job.ExecutionID, payload, failure, retry).Scan(&ok)
+	}
+	// A completion may enqueue a specialist or follow-up and fail admission.
+	// The failed SQL statement has rolled back, so close the leased task without retrying that enqueue.
+	var allowance *pgconn.PgError
+	if errors.As(finishErr, &allowance) && allowance.Code == "P4L01" {
+		finishErr = s.Pool.QueryRow(finish, "SELECT platform.agent_finish($1,$2,$3,NULL,'denied',false)", job.ID, lease, job.ExecutionID).Scan(&ok)
+	}
 	if finishErr != nil {
 		return true, finishErr
 	}
@@ -168,15 +192,16 @@ func (s Service) run(ctx context.Context, j claimed, lease string) (af.Result, e
 }
 
 type attempt struct {
-	service    Service
-	job        claimed
-	lease      string
-	scope      af.Scope
-	tool       string
-	permission string
-	request    json.RawMessage
-	profile    json.RawMessage
-	claimed    bool
+	service          Service
+	job              claimed
+	lease            string
+	scope            af.Scope
+	tool             string
+	permission       string
+	request          json.RawMessage
+	profile          json.RawMessage
+	workshopEvidence json.RawMessage
+	claimed          bool
 }
 
 func (a *attempt) Load(ctx context.Context, s af.Scope, id string) (af.Configuration, error) {

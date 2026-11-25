@@ -18,10 +18,12 @@ with (backups / ".schedule.lock").open("a") as lock:
     check_live(record, manifest, ("postgres",))
     if shutil.disk_usage(backups).free < 20 * 1024**3:
         raise SystemExit("FAIL: backup requires 20 GiB free")
+    external = any(os.environ.get(key) for key in ('ABA_OFFSITE_BUCKET', 'ABA_OFFSITE_PREFIX', 'ABA_OFFSITE_CERTIFICATE', 'ABA_OFFSITE_CERT_SHA256'))
     subprocess.run(
         [sys.executable, str(release / "scripts/deployment/backup_job.py"), "--release", str(release),
-         "--env", base[3], "--project", PROJECT, "--backup-dir", str(backups)],
-        check=True, timeout=920,
+         "--env", base[3], "--project", PROJECT, "--backup-dir", str(backups),
+         "--compose-override", base[7], "--expected-volume", record["postgres_active_volume"]],
+        check=True, timeout=2800 if external else 920,
     )
     managed = []
     for item in backups.iterdir():

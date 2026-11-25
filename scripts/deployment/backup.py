@@ -25,8 +25,12 @@ def main():
     p.add_argument('--env', type=Path, required=True)
     p.add_argument('--project', required=True)
     p.add_argument('--archive', type=Path, required=True)
+    p.add_argument('--compose-override', type=Path)
+    p.add_argument('--expected-volume')
     a = p.parse_args()
-    base, _ = validate(a.release, a.env, a.project)
+    if a.action != 'backup' and (a.compose_override or a.expected_volume):
+        p.error('active volume override is only permitted for backup')
+    base, _ = validate(a.release, a.env, a.project, a.compose_override, a.expected_volume)
     container = postgres(base)
     if a.action == 'backup':
         if a.archive.parent.stat().st_mode & 0o077:

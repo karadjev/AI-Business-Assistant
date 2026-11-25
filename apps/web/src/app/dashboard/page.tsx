@@ -14,7 +14,7 @@ const setupLabels:Record<string,string> = {NOT_STARTED:"Начало настр�
 export default async function Dashboard({searchParams}:{searchParams:Promise<{org?:string}>}) {
   const list = await organizations(), selected = (await searchParams).org;
   const active = list.find(o => o.id === selected) ?? (selected ? undefined : list[0]);
-  if (!active) return <main id="main" tabIndex={-1}><PageIntro title={selected ? "Магазин недоступен" : "Начнём с вашего магазина"}/><EmptyState title={selected ? "Выберите доступный магазин" : "Создайте первый магазин"} href={selected ? "/dashboard/organizations" : "/dashboard/organizations/new"} action={selected ? "Выбрать магазин" : "Создать магазин"}>{selected ? "Откройте магазин, к которому у вас есть доступ." : "Добавьте название магазина, затем товары."}</EmptyState></main>;
+  if (!active) return <main id="main" tabIndex={-1}><PageIntro title={selected ? "Магазин недоступен" : "Начнём с вашей организации"}/><EmptyState title={selected ? "Выберите доступный магазин" : "Создайте первую организацию"} href={selected ? "/dashboard/organizations" : "/dashboard/organizations/new"} action={selected ? "Выбрать магазин" : "Создать организацию"}>{selected ? "Откройте магазин, к которому у вас есть доступ." : "Выберите отрасль и откройте кабинет с AI-командой."}</EmptyState></main>;
   const suffix = `?org=${active.id}`;
   const link = (path:string) => `/dashboard/${path}${suffix}`;
   const pendingLink = `${link("orders")}&status=pending_confirmation`;

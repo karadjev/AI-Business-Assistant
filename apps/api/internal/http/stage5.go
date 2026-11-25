@@ -18,6 +18,8 @@ func stage5Routes(register func(string, string, func(http.ResponseWriter, *http.
 	orderService := orders.Service{Pool: identity.Pool, StockFreshness: chat.Config.StockFreshness}
 	businessOperations(register, decode, fail, catalog.Service{Pool: identity.Pool}, orderService, servicebooking.Service{Pool: identity.Pool})
 	base := "/api/v1/organizations/{id}"
+	inboxRoutes(register, base, identity, chat, decode, fail)
+	teamRoutes(register, base, identity, decode, fail)
 	register("POST", "/api/v1/organizations/test", func(w http.ResponseWriter, r *http.Request, session auth.Session) {
 		var in struct {
 			Name string `json:"name"`

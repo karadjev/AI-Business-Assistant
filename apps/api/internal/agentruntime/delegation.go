@@ -101,26 +101,33 @@ type delegatedPart struct {
 	Compatibility string `json:"compatibility"`
 }
 type delegationResult struct {
-	Route                *conversationRoute        `json:"route,omitempty"`
-	Catalog              []conversationProduct     `json:"catalog,omitempty"`
-	Order                *conversationOrder        `json:"order,omitempty"`
-	ConversationReply    string                    `json:"conversation_reply,omitempty"`
-	PropertyRequirements *PropertyRequirements     `json:"property_requirements,omitempty"`
-	Properties           []orders.Property         `json:"properties,omitempty"`
-	Message              string                    `json:"message,omitempty"`
-	PartRequirement      string                    `json:"part_requirement,omitempty"`
-	Receipt              json.RawMessage           `json:"receipt,omitempty"`
-	Construction         *ConstructionRequirements `json:"construction,omitempty"`
-	Service              *ServiceRequirements      `json:"service,omitempty"`
-	Calculation          *bf.ConstructionResult    `json:"calculation,omitempty"`
-	Material             *delegationMaterial       `json:"material,omitempty"`
-	Offering             *delegationOffering       `json:"offering,omitempty"`
-	State                string                    `json:"state"`
-	Required             []string                  `json:"required,omitempty"`
-	Requirements         *AutoPartsRequirements    `json:"requirements,omitempty"`
-	Parts                []delegatedPart           `json:"parts,omitempty"`
-	Proposal             *WorkflowDraft            `json:"proposal,omitempty"`
-	Children             []delegationChild         `json:"children,omitempty"`
+	*WorkshopMarketingDraft
+	MarketingEvidence    *workshopMarketingEvidence `json:"marketing_evidence,omitempty"`
+	Financial            *workshopFinancialResult   `json:"financial,omitempty"`
+	WorkshopPart         *workshopPart              `json:"workshop_part,omitempty"`
+	PartName             string                     `json:"part_name,omitempty"`
+	SKU                  string                     `json:"sku,omitempty"`
+	Available            *int                       `json:"available,omitempty"`
+	Route                *conversationRoute         `json:"route,omitempty"`
+	Catalog              []conversationProduct      `json:"catalog,omitempty"`
+	Order                *conversationOrder         `json:"order,omitempty"`
+	ConversationReply    string                     `json:"conversation_reply,omitempty"`
+	PropertyRequirements *PropertyRequirements      `json:"property_requirements,omitempty"`
+	Properties           []orders.Property          `json:"properties,omitempty"`
+	Message              string                     `json:"message,omitempty"`
+	PartRequirement      string                     `json:"part_requirement,omitempty"`
+	Receipt              json.RawMessage            `json:"receipt,omitempty"`
+	Construction         *ConstructionRequirements  `json:"construction,omitempty"`
+	Service              *ServiceRequirements       `json:"service,omitempty"`
+	Calculation          *bf.ConstructionResult     `json:"calculation,omitempty"`
+	Material             *delegationMaterial        `json:"material,omitempty"`
+	Offering             *delegationOffering        `json:"offering,omitempty"`
+	State                string                     `json:"state"`
+	Required             []string                   `json:"required,omitempty"`
+	Requirements         *AutoPartsRequirements     `json:"requirements,omitempty"`
+	Parts                []delegatedPart            `json:"parts,omitempty"`
+	Proposal             *WorkflowDraft             `json:"proposal,omitempty"`
+	Children             []delegationChild          `json:"children,omitempty"`
 }
 
 type delegationContext struct {
@@ -135,7 +142,7 @@ func (d delegationTool) Load(ctx context.Context, scope af.Scope, agentID string
 	if scope != d.scope || agentID != d.job.AgentID {
 		return af.Configuration{}, af.ErrDenied
 	}
-	return af.Configuration{TenantID: scope.TenantID, AgentID: agentID, Version: "delegation-v1", Enabled: true, Tools: []string{d.tool}}, ctx.Err()
+	return af.Configuration{TenantID: scope.TenantID, AgentID: agentID, Version: "delegation-v1", Enabled: true, Tools: []string{d.tool}, ContextKeys: d.contextKeys()}, ctx.Err()
 }
 
 func (d delegationTool) Next(ctx context.Context, scope af.Scope, snapshot af.Snapshot) (af.Decision, error) {
@@ -145,10 +152,16 @@ func (d delegationTool) Next(ctx context.Context, scope af.Scope, snapshot af.Sn
 	if len(snapshot.Results) > 0 {
 		return af.Decision{Done: true}, ctx.Err()
 	}
+	if workshopDelegation(d.job.Action) {
+		d.workshopEvidence = snapshot.Context.Values[workshopContextKey]
+	}
 	return af.Decision{Tool: d.tool, Input: json.RawMessage("{}")}, ctx.Err()
 }
 
 func (d delegationTool) execute(ctx context.Context, scope af.Scope, _ struct{}) (delegationResult, error) {
+	if workshopDelegation(d.job.Action) {
+		return runWorkshopStep(d.job.Action, d.workshopEvidence)
+	}
 	if d.job.Action == "delegation.property_receipt" {
 		if scope != d.scope {
 			return delegationResult{}, af.ErrDenied
@@ -336,12 +349,16 @@ func (a *attempt) runDelegation(ctx context.Context) (af.Result, error) {
 	}
 	registry, err := af.NewRegistry([]af.Registration{{TenantID: a.scope.TenantID,
 		Agent: af.Agent{ID: a.job.AgentID, Name: a.job.AgentID, Status: af.AgentEnabled, Version: "delegation-v1", Capabilities: []string{a.tool},
-			Tools: []string{a.tool}, Permissions: []string{a.tool}, Planner: d, PlanningCostKnown: true}, Tools: []af.Tool{tool}}})
+			Tools: []string{a.tool}, Permissions: []string{a.tool}, ContextKeys: d.contextKeys(), Planner: d, PlanningCostKnown: true}, Tools: []af.Tool{tool}}})
 	if err != nil {
 		return af.Result{}, err
 	}
-	router := af.Orchestrator{Registry: registry, Configurations: d, Permissions: a, Contexts: workflowContext{a.scope}, Tasks: a, Audit: a,
-		Limits: af.Limits{MaxSteps: 2, MaxContextBytes: 256, MaxResultBytes: 32768, Timeout: workflowTimeout}}
+	var contexts af.ContextProvider = workflowContext{a.scope}
+	if workshopDelegation(a.job.Action) {
+		contexts = workshopContext{a}
+	}
+	router := af.Orchestrator{Registry: registry, Configurations: d, Permissions: a, Contexts: contexts, Tasks: a, Audit: a,
+		Limits: af.Limits{MaxSteps: 2, MaxContextBytes: 8192, MaxResultBytes: 32768, Timeout: workflowTimeout}}
 	return router.Run(ctx, af.Task{ID: a.job.ID, AgentID: a.job.AgentID, CorrelationID: a.job.CorrelationID, Scope: a.scope})
 }
 

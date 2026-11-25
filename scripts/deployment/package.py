@@ -146,7 +146,7 @@ fs.cpSync('/input','/output/web',{recursive:true,filter:f=>{
                 hashes[str(file.relative_to(a.output))] = hashlib.sha256(file.read_bytes()).hexdigest()
     proof = json.loads((context / 'web' / 'web' / '.next' / 'aba-build-proof.json').read_text())
     manifest = {'schema': 1, 'release': a.release, 'platform': 'linux/amd64', 'images': images,
-                'web_proof': proof, 'files': hashes, 'database_schema': 31,
+                'web_proof': proof, 'files': hashes, 'database_schema': 38,
                 'runtime_security_admission_version': 2,
                 'status': 'PACKAGE_ONLY_NOT_DEPLOYMENT_GO', 'security': 'CONDITIONAL', 'e01': 'OPEN'}
     (a.output / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')

@@ -7,10 +7,13 @@ import re
 import subprocess
 from urllib.parse import urlparse
 
-def command(release, env, project):
+def command(release, env, project, override=None):
     if not re.fullmatch(r'aba-private-[a-z0-9][a-z0-9-]{0,47}', project):
         raise ValueError('only explicitly named private staging projects are allowed')
-    return ['docker', 'compose', '--env-file', str(env), '-f', str(release / 'infrastructure/deployment/compose.yml'), '-p', project]
+    base = ['docker', 'compose', '--env-file', str(env), '-f', str(release / 'infrastructure/deployment/compose.yml')]
+    if override is not None:
+        base.extend(['-f', str(override)])
+    return base + ['-p', project]
 
 def pin_local_docker():
     override = os.environ.get('DOCKER_HOST', '')
@@ -22,7 +25,7 @@ def pin_local_docker():
     os.environ['DOCKER_HOST'] = host
     os.environ.pop('DOCKER_CONTEXT', None)
 
-def validate(release, env, project):
+def validate(release, env, project, override=None, expected_volume=None):
     release = Path(release).resolve()
     manifest = json.loads((release / 'manifest.json').read_text())
     if manifest.get('schema') != 1 or manifest.get('platform') != 'linux/amd64':
@@ -36,9 +39,20 @@ def validate(release, env, project):
         file = release / name
         if file.is_symlink() or not file.resolve().is_relative_to(release) or hashlib.sha256(file.read_bytes()).hexdigest() != expected:
             raise ValueError('release file checksum mismatch')
-    base = command(release, env, project)
+    if (override is None) != (expected_volume is None):
+        raise ValueError('volume override and expected volume must be supplied together')
+    if override is not None and (override.is_symlink() or not override.is_file()):
+        raise ValueError('active volume override must be a regular file')
+    base = command(release, env, project, override)
     pin_local_docker()
     cfg = json.loads(subprocess.check_output(base + ['config', '--format', 'json']))
+    if expected_volume is not None:
+        volume = cfg.get('volumes', {}).get('database', {})
+        mounts = cfg.get('services', {}).get('postgres', {}).get('volumes', [])
+        if (volume.get('name') != expected_volume or not volume.get('external')
+                or not any(m.get('type') == 'volume' and m.get('source') == 'database'
+                           and m.get('target') == '/var/lib/postgresql' for m in mounts)):
+            raise ValueError('active PostgreSQL volume override mismatch')
     if any(not value.get('internal') or value.get('external') for value in cfg['networks'].values()):
         raise ValueError('network must remain internal')
     roles = {'api': 'api', 'worker': 'api', 'migrate': 'api', 'web': 'web', 'postgres': 'postgres', 'proxy': 'proxy', 'mailpit': 'mailpit'}
