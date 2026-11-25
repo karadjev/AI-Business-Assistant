@@ -71,8 +71,8 @@ export default async function Dashboard({searchParams}:{searchParams:Promise<{or
       <MetricCard title="Заявки" value={workshop.requests} caption={`${workshop.completed} завершено`} href={link("workshop")} icon="orders"/>
       <MetricCard title="Свежие остатки" value={workshop.available_skus} caption="Активные позиции с подтверждённым наличием" href={link("inventory")} icon="catalog"/>
       <MetricCard title="Согласования" value={workshop.approvals + workshop.marketing_pending} caption="Действующие запросы и черновики" href={link("workshop")+"#workshop-alerts"} icon="check"/>
-      <MetricCard title="Поступления" value={workshop.financial_count ? money(workshop.cash_minor) : "Нет данных"} caption="Подтверждённая оплата по учтённым заявкам" href={link("workshop")} icon="orders"/>
-      <MetricCard title="Валовая прибыль" value={workshop.gross_minor == null ? "Нет данных" : money(workshop.gross_minor)} caption="Стоимость услуг за вычетом стоимости деталей по учтённым заявкам" href={link("workshop")} icon="orders"/>
+      <MetricCard title="Поступления" value={workshop.financial_count ? money(workshop.cash_minor) : "Нет данных"} caption="Подтверждённая оплата по учтённым заявкам" href={link("workshop")+"#workshop-finance"} icon="orders"/>
+      <MetricCard title="Валовая прибыль" value={workshop.gross_minor == null ? "Нет данных" : money(workshop.gross_minor)} caption="Стоимость услуг за вычетом стоимости деталей по учтённым заявкам" href={link("workshop")+"#workshop-finance"} icon="orders"/>
     </section>}
     {!workshop && <section className="overview-metrics" aria-label="Состояние организации">
       {manages && <><MetricCard title="Все диалоги" value={state?.conversations ?? "Нет данных"} caption="Без ограничения по дате" action="Открыть диалоги" href={link("conversations")} icon="chat"/>

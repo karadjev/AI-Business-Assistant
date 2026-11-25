@@ -393,6 +393,44 @@ func TestRealWorkshop(t *testing.T) {
 	}
 	call(owner, org.ID, "POST", financePath(consumed), map[string]any{"service_minor": 120051, "part_cost_minor": 40525, "paid": true}, 409)
 	report(payment, 120050, 1)
+
+	// Recording and collecting the same amount in different calendar months
+	// must leave cash and earned revenue in their respective periods.
+	exec(`UPDATE platform.workshop_financials f SET recorded_at=
+	  (date_trunc('month',CURRENT_TIMESTAMP AT TIME ZONE o.timezone)-interval '1 day') AT TIME ZONE o.timezone
+	  FROM platform.organizations o WHERE o.id=f.organization_id AND f.organization_id=$1 AND f.request_id=$2`, org.ID, consumed)
+	type period struct {
+		Month   string `json:"month"`
+		Revenue *int64 `json:"revenue_minor"`
+		Cash    *int64 `json:"cash_minor"`
+		Cost    *int64 `json:"cost_minor"`
+		Gross   *int64 `json:"gross_minor"`
+	}
+	readPeriods := func(raw []byte) []period {
+		t.Helper()
+		var response struct {
+			Periods []period `json:"finance_periods"`
+		}
+		if err := json.Unmarshal(raw, &response); err != nil {
+			t.Fatal(err)
+		}
+		return response.Periods
+	}
+	periods := readPeriods(call(owner, org.ID, "GET", "", nil, 200))
+	if len(periods) != 12 {
+		t.Fatalf("want 12 calendar months, got %d", len(periods))
+	}
+	recorded, paid := periods[10], periods[11]
+	if recorded.Revenue == nil || *recorded.Revenue != 120050 || recorded.Cost == nil ||
+		*recorded.Cost != 40525 || recorded.Gross == nil || *recorded.Gross != 79525 || recorded.Cash != nil ||
+		paid.Cash == nil || *paid.Cash != 120050 || paid.Revenue != nil || paid.Cost != nil || paid.Gross != nil {
+		t.Fatal("finance totals or missing values changed between recording and payment periods")
+	}
+	for _, otherPeriod := range readPeriods(call(other, foreign.ID, "GET", "", nil, 200)) {
+		if otherPeriod.Revenue != nil || otherPeriod.Cash != nil || otherPeriod.Gross != nil || otherPeriod.Cost != nil {
+			t.Fatal("financial periods exposed across tenants")
+		}
+	}
 	raw = call(owner, org.ID, "GET", "", nil, 200)
 	for _, want := range []string{"financial_report_ready", "workshop.payment.record", "delegation.workshop_finance", "delegation.workshop_analytics", "delegate_workshop_finance"} {
 		if !bytes.Contains(raw, []byte(want)) {

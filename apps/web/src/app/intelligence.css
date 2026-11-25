@@ -265,3 +265,80 @@ body:has(.workspace) > .intelligence-header {display:none}
 .inbox-draft {padding:16px;margin-block:12px;border:1px solid var(--border);border-radius:12px;background:var(--surface-muted)}
 .inbox-draft p {white-space:pre-wrap;overflow-wrap:anywhere;margin-bottom:8px}
 .inbox-draft button {margin:6px 8px 0 0}
+
+/* Shared controls keep focus and touch targets usable above mobile navigation. */
+@media (max-width:800px) {html:has(.workspace) {scroll-padding-block-end:100px}}
+.dashboard :is(input:not([type=checkbox],[type=radio],[type=hidden]),select,textarea) {min-height:44px}
+.dashboard :is(.section-tabs a,.catalog-filters button,.table-scroll a,.workshop-workspace summary,.finance-source summary) {min-height:44px;align-content:center}
+.dashboard :is(input,select,textarea):focus-visible {outline-offset:2px}
+.dashboard :is(.table-scroll,.cc-table-scroll) {scrollbar-color:var(--control-border) var(--surface-muted)}
+.dashboard :is(.table-scroll,.cc-table-scroll):focus-visible {outline-offset:2px}
+
+.workshop-workspace {display:grid;gap:16px;margin-block:20px;min-width:0}
+.workshop-workspace > button {justify-self:start}
+.workshop-workspace > nav {display:flex;align-items:center;flex-wrap:wrap;gap:8px;color:var(--muted)}
+.workshop-workspace > nav a {padding:8px 12px;min-height:44px;align-content:center;color:var(--accent);border:1px solid var(--border);border-radius:var(--radius-control);background:var(--surface)}
+.workshop-overview dl {display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 20px}
+.workshop-overview dd {margin:0;text-align:end;font-variant-numeric:tabular-nums;font-weight:650}
+.workshop-request,.workshop-alerts {display:grid;gap:10px;min-width:0;overflow-wrap:anywhere}
+.workshop-request button {margin:6px 8px 0 0}
+.workshop-request section {padding-top:12px;border-top:1px solid var(--border)}
+.workshop-request section form {display:grid;gap:10px;max-width:520px}
+.workshop-request section label {display:grid;gap:6px}
+.workshop-request label:has(input[type=checkbox]) {display:flex;align-items:center}
+.workshop-workspace a:not(.button) {color:var(--accent)}
+.finance-panel {--finance-0:#6351a0;--finance-1:#187e69;font-variant-numeric:tabular-nums}
+:root[data-theme=dark] .finance-panel {--finance-0:#bdb5fb;--finance-1:#54d6ac}
+@media (prefers-color-scheme:dark) {
+  :root:not([data-theme=light]) .finance-panel {--finance-0:#bdb5fb;--finance-1:#54d6ac}
+}
+.finance-heading {display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.finance-heading h3 {font-size:clamp(20px,3.6vw,28px);letter-spacing:-.04em}
+.finance-controls {display:flex;gap:10px;flex-wrap:wrap}
+.finance-controls label {display:grid;gap:4px;font-size:14px;min-width:0}
+.finance-controls select {border-color:var(--control-border);max-width:100%;min-height:44px}
+.finance-legend {list-style:none;padding:0;display:flex;gap:8px 16px;flex-wrap:wrap;margin-block:24px 12px}
+.finance-legend li {display:flex;align-items:center;gap:8px;font-size:14px;color:var(--text)}
+.finance-legend span {width:13px;height:13px;border-radius:3px}
+.finance-series-0 {background:var(--finance-0)}
+.finance-series-1 {background:var(--finance-1)}
+.finance-plot {display:grid;gap:4px}
+.finance-plot button {display:grid;width:100%;grid-template-columns:76px minmax(0,1fr);align-items:center;gap:8px;text-align:left;min-height:48px;padding:6px 10px}
+.finance-plot button[aria-pressed=true] {background:var(--soft);border-color:var(--accent)}
+.finance-track {display:grid;gap:4px;position:relative;border-inline:1px solid var(--control-border);padding-block:4px}
+.finance-track::before {content:"";position:absolute;inset-block:0;left:var(--finance-zero);width:1px;background:var(--control-border)}
+.finance-lane {display:block;height:8px;position:relative}
+.finance-lane i {display:block;position:absolute;height:100%;border-radius:2px;transition:left 140ms ease,width 140ms ease}
+.finance-scale {display:flex;justify-content:space-between;gap:8px;padding-left:94px;padding-right:10px;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.finance-detail {margin-top:16px;padding:12px 16px;border:1px solid var(--border);border-radius:var(--radius-control);background:var(--surface-muted)}
+.finance-detail h4 {margin:0 0 8px;font-size:15px;font-weight:650}
+.finance-detail dl {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:0}
+.finance-detail dt {font-size:14px;color:var(--muted)}
+.finance-detail dd {margin:2px 0 0;font-size:18px;font-weight:650;overflow-wrap:anywhere}
+.finance-empty {margin-top:20px;padding:16px;border-radius:var(--radius-control);background:var(--surface-muted)}
+.finance-source {margin-top:12px;border-top:1px solid var(--border);font-size:14px}
+.finance-source summary {cursor:pointer;color:var(--accent)}
+
+@media (max-width:480px) {
+  .finance-controls,.finance-controls label {width:100%}
+  .finance-plot button {grid-template-columns:62px minmax(0,1fr);padding-inline:6px}
+  .finance-scale {padding-left:76px;padding-right:6px}
+}
+
+.team-workspace > .panel,.workspace-settings-form {margin-block:16px}
+.team-panel,.commercial-panel {display:grid;gap:12px;overflow-wrap:anywhere}
+.team-members {list-style:none;margin:0;padding:0}
+.team-members li {padding:12px 0;border-bottom:1px solid var(--border)}
+.team-members button {margin:6px 8px 0 0}
+.team-panel .identity-form,.commercial-panel .identity-form,.workspace-settings-form .identity-form {margin-block:8px}
+.commercial-panel .identity-form {max-width:720px;grid-template-columns:repeat(2,minmax(0,1fr))}
+.commercial-panel .identity-form > :is(p,button) {grid-column:1/-1}
+.commercial-panel dl {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:8px}
+.commercial-panel dl > div {padding:12px;background:var(--surface-muted);border-radius:var(--radius-control)}
+.commercial-panel dd,.team-usage dd {margin:0;font-variant-numeric:tabular-nums;font-weight:650}
+.team-usage dl {display:grid;grid-template-columns:minmax(0,1fr) minmax(100px,auto);gap:8px 16px;max-width:740px}
+.team-usage dd {text-align:end}
+@media (max-width:480px) {
+  .commercial-panel .identity-form {grid-template-columns:1fr}
+  .team-usage dl {gap:8px 10px}
+}

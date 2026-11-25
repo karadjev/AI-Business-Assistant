@@ -30,7 +30,25 @@ func (s Service) Workshop(ctx context.Context, t catalog.Tenant) (json.RawMessag
 	}
 	defer tx.Rollback(ctx)
 	var out json.RawMessage
-	err = tx.QueryRow(ctx, `SELECT jsonb_build_object(
+	err = tx.QueryRow(ctx, `WITH finance_scope AS (
+	 SELECT timezone,date_trunc('month',CURRENT_TIMESTAMP AT TIME ZONE timezone) AS month
+	 FROM platform.organizations WHERE id=$1 AND platform.workshop_owner($1)
+	), recorded AS (
+	 SELECT date_trunc('month',f.recorded_at AT TIME ZONE s.timezone) AS month,
+	  sum(f.service_minor) AS revenue_minor,sum(f.part_cost_minor) AS cost_minor,
+	  sum(f.service_minor-f.part_cost_minor) AS gross_minor
+	 FROM platform.workshop_financials f CROSS JOIN finance_scope s
+	 WHERE f.organization_id=$1 AND f.recorded_at >= (s.month-interval '11 months') AT TIME ZONE s.timezone
+	  AND f.recorded_at<=CURRENT_TIMESTAMP
+	 GROUP BY 1
+	), paid AS (
+	 SELECT date_trunc('month',f.paid_at AT TIME ZONE s.timezone) AS month,sum(f.service_minor) AS cash_minor
+	 FROM platform.workshop_financials f CROSS JOIN finance_scope s
+	 WHERE f.organization_id=$1 AND f.paid_at >= (s.month-interval '11 months') AT TIME ZONE s.timezone
+	  AND f.paid_at<=CURRENT_TIMESTAMP
+	 GROUP BY 1
+	)
+	SELECT jsonb_build_object(
 	 'enabled',platform.workshop_owner($1),
 	 'overview',CASE WHEN platform.workshop_owner($1) THEN jsonb_build_object(
 	  'customers',(SELECT count(*) FROM platform.workshop_customers WHERE organization_id=$1),
@@ -48,6 +66,11 @@ func (s Service) Workshop(ctx context.Context, t catalog.Tenant) (json.RawMessag
 	   'marketing_pending',(SELECT count(*) FROM platform.marketing_drafts d JOIN platform.agent_tasks c ON c.id=d.id AND c.organization_id=d.organization_id
 	    JOIN platform.agent_tasks m ON m.id=c.parent_id AND m.organization_id=c.organization_id AND m.status='completed'
 	    WHERE d.organization_id=$1 AND d.status='pending')) END,
+	 'finance_periods',coalesce((SELECT jsonb_agg(jsonb_build_object(
+	  'month',to_char(m.month,'YYYY-MM'),'revenue_minor',r.revenue_minor,
+	  'cost_minor',r.cost_minor,'gross_minor',r.gross_minor,'cash_minor',p.cash_minor) ORDER BY m.month)
+	  FROM finance_scope s CROSS JOIN LATERAL generate_series(s.month-interval '11 months',s.month,interval '1 month') m(month)
+	  LEFT JOIN recorded r ON r.month=m.month LEFT JOIN paid p ON p.month=m.month),'[]'),
 	 'tasks',coalesce((SELECT jsonb_agg(y ORDER BY y.created_at DESC,y.id DESC) FROM (
 	  SELECT id,correlation_id AS request_id,agent_id,action,status,created_at,error_code FROM platform.agent_tasks
 	  WHERE organization_id=$1 AND platform.workshop_owner($1) ORDER BY created_at DESC,id DESC LIMIT 30)y),'[]'),

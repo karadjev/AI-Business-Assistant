@@ -12,6 +12,6 @@ export default async function Page({searchParams}: {searchParams: Promise<{org?:
     {owned.length > 1 && <nav aria-label="Рабочая организация">
       {owned.map(item => <p key={item.id}><Link href={`?org=${item.id}`} aria-current={item.id === active?.id ? "page" : undefined}>{item.name}</Link></p>)}
     </nav>}
-    {active ? <Workshop key={active.id} org={active.id} name={active.name}/> : <p>Выберите рабочую организацию, в которой у вас есть права владельца.</p>}
+    {active ? <Workshop key={active.id} org={active.id} name={active.name} timezone={active.timezone}/> : <p>Выберите рабочую организацию, в которой у вас есть права владельца.</p>}
   </main>;
 }

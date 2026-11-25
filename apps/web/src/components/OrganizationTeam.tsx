@@ -54,18 +54,18 @@ export function OrganizationTeam({org,team,usage}:{org:string;team:Team;usage:Us
   }
   return <>
     {error&&<p role="alert">{error}</p>}
-    <section className="panel"><h2>Сотрудники</h2>
-      <ul>{team.members.map(user=><li key={user.id}>
+    <section className="panel team-panel"><h2>Сотрудники</h2>
+      <ul className="team-members">{team.members.map(user=><li key={user.id}>
         <strong>{user.display_name}</strong> · {user.email} · {user.role==="owner"?"Владелец":user.operator?"Оператор":"Участник"}
         {user.role!=="owner"&&<>
           <button disabled={busy} onClick={()=>void perform({action:"member.role",target:user.id,operator:!user.operator})}>{user.operator?"Снять права оператора":"Назначить оператором"}</button>
           <button disabled={busy} onClick={()=>{if(confirm("Отозвать доступ сотрудника к организации?"))void perform({action:"member.revoked",target:user.id});}}>Отозвать доступ</button>
         </>}
       </li>)}</ul>
-      <form onSubmit={invite}>
+      <form className="identity-form" onSubmit={invite}>
         <label>Email сотрудника<input name="email" type="email" maxLength={254} required/></label>
         <label>Роль<select name="role"><option value="member">Участник</option><option value="operator">Оператор заявок и Inbox</option></select></label>
-        <button disabled={busy}>Создать приглашение</button>
+        <button className="primary" disabled={busy}>{busy?"Создаём…":"Создать приглашение"}</button>
       </form>
       {code&&<div role="status"><p>Передайте код сотруднику по защищённому каналу. Он действует 24 часа.</p>
         <label>Код приглашения<input value={code} readOnly onFocus={event=>event.target.select()}/></label>
@@ -76,7 +76,7 @@ export function OrganizationTeam({org,team,usage}:{org:string;team:Team;usage:Us
         <button disabled={busy} onClick={()=>void perform({action:"invite.revoked",target:invite.id})}>Отозвать приглашение</button>
       </li>)}</ul>}
     </section>
-    <section className="panel"><h2>Использование ресурсов</h2>
+    <section className="panel team-panel team-usage"><h2>Использование ресурсов</h2>
       <dl><dt>Сотрудники</dt><dd>{usage.staff}{usage.staff_limit===null?" · лимит не назначен":" из "+usage.staff_limit}</dd>
         <dt>Активные настройки каналов</dt><dd>{usage.active_channels}</dd>
         <dt>Задачи агентов за 30 дней</dt><dd>{usage.tasks_30d}, ошибок и таймаутов {usage.tasks_failed}</dd>
@@ -88,7 +88,7 @@ export function OrganizationTeam({org,team,usage}:{org:string;team:Team;usage:Us
         <dt>Записи с неопределённой стоимостью</dt><dd>{usage.uncertain_cost_entries}</dd>
       </dl>
     </section>
-    <section className="panel"><h2>Последние действия</h2>{team.audit.length
+    <section className="panel team-panel"><h2>Последние действия</h2>{team.audit.length
       ?<ul>{team.audit.map(event=><li key={event.id}>{actions[event.action]??event.action} · {new Date(event.created_at).toLocaleString("ru-RU")}</li>)}</ul>
       :<p>Изменений пока нет.</p>}</section>
   </>;
@@ -109,7 +109,7 @@ export function JoinTeam() {
     catch(reason){setError(reason instanceof Error?reason.message:"Не удалось принять приглашение");}
     finally{setBusy(false);}
   }
-  return org?<p>Приглашение принято. <Link href={`/dashboard?org=${org}`}>Открыть организацию</Link></p>:<form onSubmit={accept}>
+  return org?<p>Приглашение принято. <Link href={`/dashboard?org=${org}`}>Открыть организацию</Link></p>:<form className="identity-form" onSubmit={accept}>
     <label>Код приглашения<input name="code" required maxLength={80} autoComplete="off" spellCheck={false}/></label>
     <button disabled={busy}>Принять приглашение</button>
     {error&&<p role="alert">{error}</p>}

@@ -25,7 +25,7 @@ export default async function CommandPage({searchParams}: {searchParams:Promise<
       <IntelligenceCore compact/>
     </section>
     {org?.is_test && <CommandTasks key={org.id} org={org}/>}
-    {org && workspace && <Workshop key={org.id} org={org.id} name={org.name}/>}
+    {org && workspace && <Workshop key={org.id} org={org.id} name={org.name} timezone={org.timezone}/>}
     {org && !org.is_test && org.role === "owner" && !workspace && <p className="panel">Рабочие поручения сейчас недоступны. Проверьте допуск организации или откройте <Link href="/#live-demo">публичное демо</Link>.</p>}
     {org && !org.is_test && org.role !== "owner" && <p className="panel">Рабочие поручения доступны владельцу организации.</p>}
     {!org?.is_test && <details className="panel command-roles">

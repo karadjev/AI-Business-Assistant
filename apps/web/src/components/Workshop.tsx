@@ -5,6 +5,7 @@ import {useCallback, useEffect, useRef, useState, type FormEvent} from "react";
 import type {WorkshopOverview} from "@/lib/workshop-overview";
 import {csrf} from "./IdentityForm";
 import {minor, money} from "@/lib/catalog";
+import {WorkshopFinanceChart, type FinancePeriod} from "./WorkshopFinanceChart";
 import {ManagerTaskList, WorkshopManager, type ManagerTask} from "./WorkshopManager";
 
 type AgentResult = {id: string; agent: string; status: string; result: {message?: string} | null};
@@ -29,6 +30,7 @@ type Request = {
 };
 type Workspace = {
   overview: WorkshopOverview|null;
+  finance_periods?: FinancePeriod[];
   tasks: ManagerTask[];
   enabled: boolean;
   customers: {id: string; name: string}[];
@@ -76,7 +78,7 @@ function requestState(item: Request) {
     ? item.approval_status : item.proposal?.state ?? item.status);
 }
 
-export function Workshop({org, name}: {org: string; name: string}) {
+export function Workshop({org, name, timezone}: {org: string; name: string; timezone:string}) {
   const root = `/api/v1/organizations/${org}/workshop`;
   const [data, setData] = useState<Workspace>();
   const [error, setError] = useState("");
@@ -150,7 +152,7 @@ export function Workshop({org, name}: {org: string; name: string}) {
     });
   }
 
-  return <section className="panel">
+  return <section className="workshop-workspace">
     <h2>{name}</h2>
     <p>Рабочие данные организации</p>
     {error && <p role="alert">{error}</p>}
@@ -162,10 +164,10 @@ export function Workshop({org, name}: {org: string; name: string}) {
     {data && !data.enabled && <p>Для этой организации обработка рабочих заявок пока недоступна.</p>}
     {data?.enabled && <>
       <nav aria-label="Управление автосервисом">
-        <a href="#workshop-manager">Управляющий</a>{" · "}<a href="#workshop-alerts">Согласования</a>{" · "}
-        <a href="#workshop-team">Задачи</a>{" · "}<a href="#workshop-requests">Заявки</a>
+        <a href="#workshop-manager">Управляющий</a><a href="#workshop-finance">Финансы</a>
+        <a href="#workshop-alerts">Согласования</a><a href="#workshop-team">Задачи</a><a href="#workshop-requests">Заявки</a>
       </nav>
-      {data.overview && <section aria-label="Сводка организации">
+      {data.overview && <section className="panel workshop-overview" aria-label="Сводка организации">
         <h3>Сводка организации</h3>
         <dl>
           <dt>Клиентов</dt><dd>{data.overview.customers}</dd>
@@ -177,8 +179,9 @@ export function Workshop({org, name}: {org: string; name: string}) {
           <dt>Валовая прибыль по учтённым заявкам</dt><dd>{data.overview.gross_minor === null ? "Нет данных" : money(data.overview.gross_minor)}</dd>
         </dl>
       </section>}
+      <WorkshopFinanceChart periods={data.finance_periods} timezone={timezone}/>
       <WorkshopManager base={root+"/manager"} tasks={data.tasks} requests={data.requests} onQueued={load}/>
-      <section id="workshop-alerts" aria-label="Согласования и последние действия">
+      <section className="panel workshop-alerts" id="workshop-alerts" aria-label="Согласования и последние действия">
         <h3>Согласования и последние действия</h3>
         <p>Ожидают решения: {(data.overview?.approvals??0) + (data.overview?.marketing_pending??0)}.</p>
         {data.requests.filter(item => item.approval_status==="pending" || item.marketing_draft?.status==="pending").map(item =>
@@ -188,15 +191,16 @@ export function Workshop({org, name}: {org: string; name: string}) {
         </li>)}</ol> : <p>Последних действий пока нет.</p>}
       </section>
       <ManagerTaskList tasks={data.tasks}/>
+      <section className="panel workshop-intake">
       <h3>Карточка клиента</h3>
-      <form onSubmit={createCustomer}>
+      <form className="identity-form" onSubmit={createCustomer}>
         <label>Имя клиента<input name="name" maxLength={120} required/></label>
         <button disabled={busy}>Добавить клиента</button>
       </form>
       <h3>Новая заявка на обслуживание</h3>
       {data.parts.length === 0 && <p>Добавьте и активируйте деталь в каталоге, затем укажите её остаток.
         {" "}<Link href={`/dashboard/products?org=${org}`}>Открыть каталог</Link></p>}
-      <form onSubmit={createRequest}>
+      <form className="identity-form" onSubmit={createRequest}>
         <label><span id="workshop-customer-label">Клиент</span><select aria-labelledby="workshop-customer-label" name="customer" required defaultValue=""><option value="" disabled>Выберите клиента</option>
           {data.customers.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         <label>Автомобиль<input name="vehicle" maxLength={120} required placeholder="Марка, модель, год"/></label>
@@ -207,9 +211,10 @@ export function Workshop({org, name}: {org: string; name: string}) {
         <p>Вы выбираете деталь. Агент проверит остаток и предложит резерв. Проверьте совместимость перед согласованием.</p>
         <button disabled={busy || !data.customers.length || !data.parts.length}>Поручить AI-управляющему</button>
       </form>
+      </section>
       <h3 id="workshop-requests">Заявки и согласования</h3>
       {data.requests.length === 0 && <p>Заявок пока нет.</p>}
-      {data.requests.map(item => <article key={item.id} id={`workshop-request-${item.id}`}>
+      {data.requests.map(item => <article className="panel workshop-request" key={item.id} id={`workshop-request-${item.id}`}>
         <h4>{item.service} · {item.vehicle}</h4>
         <p>{item.customer} · {states[requestState(item)] ?? requestState(item)}</p>
         {item.proposal?.message && <p><strong>Итог AI-управляющего.</strong> {item.proposal.message}</p>}

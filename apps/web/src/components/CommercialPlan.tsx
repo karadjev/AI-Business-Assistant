@@ -68,7 +68,7 @@ export function CommercialPlan({org,state,legacyStaffLimit}:{org:string;state:Pl
     } finally {setBusy(false);}
   }
 
-  return <section className="panel" aria-label="Тариф и лимиты">
+  return <section className="panel commercial-panel" aria-label="Тариф и лимиты">
     <h2>Тариф и лимиты</h2>
     <p>{state.plans.find(plan=>plan.code===subscription.plan_code)?.name??subscription.plan_code} · {active?"Активен":"Приостановлен"}</p>
     {active
@@ -87,12 +87,12 @@ export function CommercialPlan({org,state,legacyStaffLimit}:{org:string;state:Pl
         </dd>
       </div>;
     })}</dl>
-    {state.can_edit&&<form key={subscription.version} onSubmit={save}>
+    {state.can_edit&&<form className="identity-form" key={subscription.version} onSubmit={save}>
       <label>Тариф<select name="plan_code" defaultValue={subscription.plan_code}>{state.plans.map(plan=><option value={plan.code} key={plan.code}>{plan.name}</option>)}</select></label>
       <label>Статус подписки<select name="status" defaultValue={subscription.status}><option value="active">Активна</option><option value="paused">Приостановлена</option></select></label>
       {caps.map(cap=><label key={cap.key}>{cap.label}<input name={cap.key} type="number" min={0} max={cap.max} step={1} defaultValue={subscription[cap.key]??""}/></label>)}
       <p className="field-hint">Пустое поле снимает лимит подписки. Действующие ограничения безопасности сохраняются.</p>
-      <button disabled={busy}>Сохранить тариф и лимиты</button>
+      <button className="primary" disabled={busy}>{busy?"Сохраняем…":"Сохранить тариф и лимиты"}</button>
     </form>}
     {message&&<p role="status">{message}</p>}
     {error&&<p role="alert">{error}</p>}
