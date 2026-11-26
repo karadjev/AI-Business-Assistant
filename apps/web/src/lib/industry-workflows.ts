@@ -64,7 +64,7 @@ function measure(form: FormData, key: string, allowZero = false) {
 }
 
 // The booking API validates the explicit offset against the service timezone.
-function formatServiceInstant(value: Date, timeZone: string) {
+export function formatServiceInstant(value: Date, timeZone: string) {
   const formatter = new Intl.DateTimeFormat("en-GB", {
     timeZone, timeZoneName: "longOffset", calendar: "iso8601", numberingSystem: "latn",
     year: "numeric", month: "2-digit", day: "2-digit",

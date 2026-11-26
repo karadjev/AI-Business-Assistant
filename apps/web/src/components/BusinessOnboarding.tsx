@@ -22,9 +22,12 @@ type Profile = {model: string; industry: string; revision: number};
 export function BusinessOnboarding({org, profile}: {org: string; profile: Profile}) {
   const router = useRouter();
   const submitting = useRef(false);
+  const [selectedProfile, setSelectedProfile] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const current = profiles.find(item => item.model === profile.model && item.industry === profile.industry);
+  const chosen = profiles.find(item => item.id === (selectedProfile || current?.id || profiles[0].id));
+  const configuringServices = chosen?.model === "service" || chosen?.model === "hybrid";
   const target = `/dashboard/command?org=${org}`;
 
   async function save(event: FormEvent<HTMLFormElement>) {
@@ -48,7 +51,8 @@ export function BusinessOnboarding({org, profile}: {org: string; profile: Profil
           throw new Error(payload?.error?.message ?? "Не удалось сохранить профиль. Обновите страницу и проверьте выбранную отрасль.");
         }
       }
-      router.push(target);
+      router.push(selected.model === "service" || selected.model === "hybrid"
+        ? `/dashboard/onboarding?org=${org}&flow=services` : target);
       router.refresh();
     } catch (failure) {
       setError(failure instanceof Error && failure.name === "Error"
@@ -61,10 +65,10 @@ export function BusinessOnboarding({org, profile}: {org: string; profile: Profil
   return <section className="module-card onboarding-card">
     <p>Выберите профиль, чтобы AI-команда показала доступные для вашей отрасли поручения.</p>
     <form className="identity-form" onSubmit={save}>
-      <label>Отрасль и профиль<select name="profile" defaultValue={current?.id ?? profiles[0].id} disabled={busy}>
+      <label>Отрасль и профиль<select name="profile" value={chosen?.id ?? profiles[0].id} onChange={event => setSelectedProfile(event.target.value)} disabled={busy}>
         {profiles.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
       </select></label>
-      <button className="primary" disabled={busy}>{busy ? "Сохраняем…" : "Сохранить профиль и открыть AI-команду"}</button>
+      <button className="primary" disabled={busy}>{busy ? "Сохраняем…" : configuringServices ? "Сохранить профиль и настроить услуги" : "Сохранить профиль и открыть AI-команду"}</button>
       {error && <p className="form-error" role="alert">{error}</p>}
     </form>
     <nav aria-label="Дальнейшие действия"><Link prefetch={false} href="/dashboard/organizations">К списку организаций</Link><Link prefetch={false} href={`/dashboard?org=${org}`}>Настроить позже</Link></nav>
