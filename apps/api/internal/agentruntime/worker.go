@@ -277,6 +277,17 @@ func (a *attempt) Read(ctx context.Context, s af.Scope) (specialists.ReadResult,
 	if err != nil {
 		return specialists.ReadResult{}, err
 	}
+	var serviceData []byte
+	if err := a.service.Pool.QueryRow(ctx, "SELECT platform.service_agent_totals($1,$2)", a.job.ID, a.lease).Scan(&serviceData); err != nil {
+		return specialists.ReadResult{}, err
+	}
+	if len(serviceData) != 0 {
+		serviceValues, err := serviceMetrics(serviceData)
+		if err != nil {
+			return specialists.ReadResult{}, err
+		}
+		values = append(values, serviceValues...)
+	}
 	now := time.Now()
 	return specialists.ReadResult{Scope: s, Revision: a.job.ExecutionID, ObservedAt: now, ValidUntil: now.Add(time.Minute), Metrics: values}, nil
 }
@@ -307,6 +318,34 @@ func orderMetrics(data []byte) ([]specialists.Metric, error) {
 		values = append(values, specialists.Metric{Name: "average_completed_order_value_last_30d", Value: *metrics.Revenue / *metrics.Count, Unit: "RUB_minor"})
 	}
 	return values, nil
+}
+
+func serviceMetrics(raw []byte) ([]specialists.Metric, error) {
+	var data struct {
+		Completed *int64 `json:"completed_count"`
+		Paid      *int64 `json:"paid_count"`
+		Received  *int64 `json:"received_minor"`
+		Cost      *int64 `json:"cost_minor"`
+		Margin    *int64 `json:"difference_minor"`
+	}
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return nil, err
+	}
+	if data.Completed == nil || data.Paid == nil || (*data.Paid > 0 && (data.Received == nil || data.Cost == nil || data.Margin == nil)) {
+		return nil, af.ErrDenied
+	}
+	out := []specialists.Metric{
+		{Name: "services_completed", Value: *data.Completed, Unit: "services"},
+		{Name: "services_paid", Value: *data.Paid, Unit: "services"},
+	}
+	if *data.Paid > 0 {
+		out = append(out,
+			specialists.Metric{Name: "service_confirmed_receipts", Value: *data.Received, Unit: "RUB_minor"},
+			specialists.Metric{Name: "service_recorded_cost", Value: *data.Cost, Unit: "RUB_minor"},
+			specialists.Metric{Name: "service_receipts_less_recorded_cost", Value: *data.Margin, Unit: "RUB_minor"},
+		)
+	}
+	return out, nil
 }
 
 type contextSource struct{ a *attempt }

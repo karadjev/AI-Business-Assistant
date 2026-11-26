@@ -392,6 +392,11 @@ func (s Service) Change(ctx context.Context, t catalog.Tenant, id, action string
 	if !allowed {
 		return nil, failure("INVALID_STATE", "Этот переход статуса запрещён")
 	}
+	if requestKind == "service_booking" {
+		if e = checkAssignedTransition(ctx, tx, t.OrganizationID, id, target); e != nil {
+			return nil, e
+		}
+	}
 	if requestKind == "product_order" {
 		if e = s.changeProductStock(ctx, tx, t, id, target, status); e != nil {
 			return nil, e

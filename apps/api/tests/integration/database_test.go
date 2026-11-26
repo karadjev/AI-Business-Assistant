@@ -63,7 +63,7 @@ func TestDatabaseAndMigrations(t *testing.T) {
 	if e = migrate.Run(ctx, migrationDSN, "up"); e != nil {
 		t.Fatal(e)
 	}
-	t.Run("instagram-schema-up", func(t *testing.T) { testInstagramSchemaStage22(t, conn, ctx, 38) })
+	t.Run("instagram-schema-up", func(t *testing.T) { testInstagramSchemaStage22(t, conn, ctx, 39) })
 	if e = migrate.Run(ctx, migrationDSN, "up"); e != nil {
 		t.Fatal("repeat up failed", e)
 	}
@@ -87,6 +87,9 @@ func TestDatabaseAndMigrations(t *testing.T) {
 	}
 	if _, e = database.Pool.Exec(ctx, `CREATE TABLE platform.forbidden (id integer)`); e == nil {
 		t.Fatal("runtime can perform DDL")
+	}
+	if e = migrate.Run(ctx, migrationDSN, "down"); e != nil {
+		t.Fatal("service work schema down", e)
 	}
 	if e = migrate.Run(ctx, migrationDSN, "down"); e != nil {
 		t.Fatal(e)
@@ -262,7 +265,7 @@ func TestDatabaseAndMigrations(t *testing.T) {
 	if e = migrate.Run(ctx, migrationDSN, "up"); e != nil {
 		t.Fatal(e)
 	}
-	t.Run("instagram-schema-reapply", func(t *testing.T) { testInstagramSchemaStage22(t, conn, ctx, 38) })
+	t.Run("instagram-schema-reapply", func(t *testing.T) { testInstagramSchemaStage22(t, conn, ctx, 39) })
 	testIdentity(t, database, conn, ctx)
 	testCatalog(t, database, conn, ctx)
 	testStage5(t, database, conn, ctx)

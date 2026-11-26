@@ -81,6 +81,32 @@ func businessOperations(register operationRegister, decode operationDecode, fail
 		}
 		writeJSON(w, 200, out)
 	})
+	operation(register, decode, fail, "services/work/assign", 200, func(r *http.Request, t catalog.Tenant, in orders.StaffAssignment) (json.RawMessage, error) {
+		return o.AssignService(r.Context(), t, in)
+	})
+	operation(register, decode, fail, "services/work/receipt", 200, func(r *http.Request, t catalog.Tenant, in orders.ServiceReceipt) (json.RawMessage, error) {
+		return o.RecordServiceReceipt(r.Context(), t, in)
+	})
+	for path, read := range map[string]func(*http.Request, catalog.Tenant) (json.RawMessage, error){
+		"schedule": func(r *http.Request, t catalog.Tenant) (json.RawMessage, error) {
+			return o.ServiceSchedule(r.Context(), t)
+		},
+		"financials": func(r *http.Request, t catalog.Tenant) (json.RawMessage, error) {
+			return o.ServiceFinancials(r.Context(), t)
+		},
+		"orders/{order}": func(r *http.Request, t catalog.Tenant) (json.RawMessage, error) {
+			return o.ServiceWorkState(r.Context(), t, r.PathValue("order"))
+		},
+	} {
+		register("GET", "/api/v1/organizations/{id}/operations/services/work/"+path, func(w http.ResponseWriter, r *http.Request, session auth.Session) {
+			out, err := read(r, catalog.Tenant{OrganizationID: r.PathValue("id"), Session: session})
+			if err != nil {
+				fail(w, r, err)
+				return
+			}
+			writeJSON(w, 200, out)
+		})
+	}
 	operation(register, decode, fail, "requests", 201, func(r *http.Request, t catalog.Tenant, in orders.Intake) (json.RawMessage, error) {
 		return o.PrepareIntake(r.Context(), t, in)
 	})

@@ -34,5 +34,18 @@ export async function WorkflowPage({view,query,id}:{view:"chat"|"orders"|"order"
  }
  const params=new URLSearchParams();if(query.status)params.set("status",query.status);if(query.page)params.set("page",query.page);
  const result=await load(root+(view==="order"?"/orders/"+id:"/orders?"+params));if(result.error)return <main id="main" tabIndex={-1}><h1>Заявки недоступны</h1><p role="alert">{result.error}</p><Link prefetch={false} href={`/dashboard/orders?org=${org.id}`}>Обновить список</Link></main>;
- return <Workflows key={org.id+":"+JSON.stringify(result.data)} org={org} organizations={list} view={view} order={view==="order"?result.data:undefined} orders={view==="orders"?result.data.items:undefined}/>;
+ const owner=org.role==="owner";
+ const work=root+"/operations/services/work";
+ const [state,team,schedule,totals]=await Promise.all([
+  view==="order"&&result.data.request_kind==="service_booking"?load(work+"/orders/"+id):null,
+  view==="order"&&result.data.request_kind==="service_booking"&&owner?load(root+"/team"):null,
+  view==="orders"?load(work+"/schedule"):null,
+  view==="orders"&&owner?load(work+"/financials"):null,
+ ]);
+ const workError=state?.error||team?.error||schedule?.error||totals?.error;
+ return <>
+  {workError&&<p role="alert">{workError}</p>}
+  <Workflows key={org.id+":"+JSON.stringify(result.data)} org={org} organizations={list} view={view} order={view==="order"?result.data:undefined} orders={view==="orders"?result.data.items:undefined}
+   serviceWork={state?.data??undefined} serviceMembers={team?.data?.members} schedule={schedule?.data??undefined} serviceTotals={totals?.data??undefined}/>
+ </>;
 }

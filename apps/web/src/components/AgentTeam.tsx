@@ -1,6 +1,7 @@
 "use client";
 
 import {useEffect, useRef, useState, type FormEvent} from "react";
+import {money} from "@/lib/catalog";
 import {displayDate} from "@/lib/presentation";
 import {AgentApprovals} from "./AgentApprovals";
 import {AutoServiceApproval} from "./IndustryWorkflows";
@@ -20,6 +21,25 @@ type Team = {
   profile: {model: string; industry: string; revision: number; capabilities: string[]};
   agents: Agent[];
 };
+
+const serviceMetricLabels = new Map([
+  ["services_completed", "Завершено услуг"],
+  ["services_paid", "Услуг с подтверждённой оплатой"],
+  ["service_confirmed_receipts", "Подтверждённые поступления"],
+  ["service_recorded_cost", "Учтённая себестоимость"],
+  ["service_receipts_less_recorded_cost", "Поступления за вычетом себестоимости"],
+]);
+
+function ServiceMetrics({metrics}: {metrics: unknown}) {
+  if (!Array.isArray(metrics)) return null;
+  const rows = metrics.flatMap(metric => {
+    if (!isObject(metric) || typeof metric.name !== "string" || typeof metric.value !== "number") return [];
+    const label = serviceMetricLabels.get(metric.name);
+    return label ? [{id: metric.name, label, value: metric.unit === "RUB_minor" ? money(metric.value) : metric.value}] : [];
+  });
+  if (rows.length === 0) return null;
+  return <dl className="agent-team-details">{rows.map(row => <div key={row.id}><dt>{row.label}</dt><dd>{row.value}</dd></div>)}</dl>;
+}
 
 const industries = [
   {id: "electronics", model: "trade", label: "Электроника"},
@@ -531,6 +551,7 @@ export function AgentTeam({organizationId, timezone, owner, getCsrfToken, extern
                 </li>)}</ul>
               </>}
               <h4>Результат</h4>
+              {task.status === "completed" && <ServiceMetrics metrics={result?.metrics}/>}
               {partial && <p>Часть работы не выполнена. Проверьте статусы подзадач и доступный результат.</p>}
               {task.action === "delegate_service" && task.status === "completed" && result?.state === "approval_required" &&
                 <AutoServiceApproval organizationId={organizationId} taskId={task.id} getCsrfToken={getCsrfToken}/>}
