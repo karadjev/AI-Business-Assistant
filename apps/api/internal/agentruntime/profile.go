@@ -72,7 +72,7 @@ func (s Service) Team(ctx context.Context, t catalog.Tenant) (Team, error) {
 	if err != nil || !p.valid() {
 		return Team{}, auth.Unavailable()
 	}
-	p.Capabilities = []string{"completed_order_reports", "marketing_draft_approval", "team_coordination"}
+	p.Capabilities = []string{"completed_order_reports", "marketing_draft_approval", "team_coordination", "daily_review"}
 	if p.catalogAllowed() {
 		p.Capabilities = append(p.Capabilities, "catalog_price", "catalog_inventory", "catalog_details", "growth_review")
 	}
@@ -94,6 +94,12 @@ func (s Service) Team(ctx context.Context, t catalog.Tenant) (Team, error) {
 				}
 			}
 			allowed = append(allowed, permission)
+		}
+		switch a.ID {
+		case "customer", "sales", "product_inventory", "marketing":
+			allowed = append(allowed, a.ID+".daily_review")
+		case "business_manager":
+			allowed = append(allowed, a.ID+"."+dailyCoordination)
 		}
 		result.Agents = append(result.Agents, teamAgent{ID: a.ID, Name: a.Name, Description: a.Description, Permissions: allowed, Enabled: len(allowed) > 0})
 	}

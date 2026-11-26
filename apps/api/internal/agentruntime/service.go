@@ -72,7 +72,7 @@ func (r Request) valid() bool {
 	case "finance", "analytics":
 		return r.Action == "read" && r.VariantID == "" && r.ConversationID == ""
 	case "business_manager":
-		return (r.Action == "plan" || r.Action == "coordinate" || r.Action == "coordinate_growth") && r.VariantID == "" && r.ConversationID == ""
+		return (r.Action == "plan" || r.Action == "coordinate" || r.Action == "coordinate_growth" || r.Action == dailyCoordination) && r.VariantID == "" && r.ConversationID == ""
 	}
 	return false
 }
@@ -83,6 +83,9 @@ func (s Service) Submit(ctx context.Context, t catalog.Tenant, r Request) (strin
 	}
 	if len(s.Key) != 32 {
 		return "", auth.Unavailable()
+	}
+	if r.Action == dailyCoordination {
+		return s.submitDaily(ctx, t)
 	}
 	tx, err := s.ownerTx(ctx, t)
 	if err != nil {
@@ -103,16 +106,20 @@ func (s Service) Submit(ctx context.Context, t catalog.Tenant, r Request) (strin
 	err = tx.QueryRow(ctx, "SELECT platform.agent_submit($1,$2,$3,$4,$5,nullif($6,'')::uuid,nullif($7,'')::uuid,$8)",
 		t.OrganizationID, auth.UUID(), r.IdempotencyKey, r.AgentID, r.Action, r.VariantID, r.ConversationID, hash[:]).Scan(&id)
 	if err != nil {
-		var dbErr *pgconn.PgError
-		if errors.As(err, &dbErr) && dbErr.Code == "54000" {
-			return "", auth.Failure(429, "RATE_LIMITED", "Повторите позже")
-		}
-		return "", tenancy.Error(err)
+		return "", submitError(err)
 	}
 	if err = tx.Commit(ctx); err != nil {
 		return "", auth.Unavailable()
 	}
 	return id, nil
+}
+
+func submitError(err error) error {
+	var dbErr *pgconn.PgError
+	if errors.As(err, &dbErr) && dbErr.Code == "54000" {
+		return auth.Failure(429, "RATE_LIMITED", "Повторите позже")
+	}
+	return tenancy.Error(err)
 }
 
 func (s Service) ListApprovals(ctx context.Context, t catalog.Tenant) (json.RawMessage, error) {

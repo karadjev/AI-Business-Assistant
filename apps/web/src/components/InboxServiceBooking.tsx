@@ -4,6 +4,7 @@ import Link from "next/link";
 import {useRef, useState, type FormEvent} from "react";
 import {csrf} from "./IdentityForm";
 import {buildServiceSelection, parseOfferings, readID, type Offering} from "@/lib/industry-workflows";
+import {displayDate} from "@/lib/presentation";
 import {idempotencyKey} from "@/lib/workflows";
 
 export function InboxServiceBooking({org, conversation}: {org: string; conversation: string}) {
@@ -11,11 +12,14 @@ export function InboxServiceBooking({org, conversation}: {org: string; conversat
   const [selected, setSelected] = useState("");
   const [order, setOrder] = useState("");
   const [busy, setBusy] = useState(false);
+  const [draft,setDraft] = useState("");
+  const [query,setQuery] = useState("");
+  const previewAttempt = useRef<{fingerprint:string;key:string;done:boolean}|undefined>(undefined);
   const [error, setError] = useState("");
   const active = useRef(false);
   const attempt = useRef<{fingerprint: string; key: string} | undefined>(undefined);
   const offering = offerings?.find(item => item.id === selected);
-  const root = `/api/v1/organizations/${org}/operations/`;
+  const root = `/api/v1/organizations/${org}/`;
 
   async function post(path: string, body: object): Promise<unknown> {
     const response = await fetch(root + path, {method:"POST",
@@ -50,7 +54,10 @@ export function InboxServiceBooking({org, conversation}: {org: string; conversat
     <summary>Подготовить запись на услугу</summary>
     <p>Выберите услугу и время в часовом поясе устройства. Запись закрепит сотрудник при подтверждении заявки.</p>
     <form className="identity-form" onSubmit={event => void perform(event, async input => {
-      const matches = parseOfferings(await post("services/search",{query:String(input.get("query") ?? "").trim(),limit:20}));
+      const query=String(input.get("query") ?? "").trim();
+      const matches = parseOfferings(await post("operations/services/search",{query,limit:20}));
+      setQuery(query);
+      setDraft("");
       setOfferings(matches);
       setSelected(matches.length === 1 ? matches[0].id : "");
     })}>
@@ -58,16 +65,32 @@ export function InboxServiceBooking({org, conversation}: {org: string; conversat
       <button disabled={busy}>Найти услуги</button>
     </form>
     {offerings?.length === 0 && <p role="status">Подходящих услуг нет.</p>}
-    {!!offerings?.length && <form className="identity-form" onSubmit={event => void perform(event, async input => {
+    {!!offerings?.length && <form className="identity-form" onChange={()=>setDraft("")} onSubmit={event => {
+      const preview = (event.nativeEvent as SubmitEvent).submitter?.getAttribute("value")==="preview";
+      void perform(event, async input => {
       if (!offering) throw new Error("Выберите услугу.");
       const selection = buildServiceSelection(input, offering);
+      if (preview) {
+        const fingerprint=JSON.stringify(selection);
+        if (previewAttempt.current?.fingerprint!==fingerprint) previewAttempt.current={fingerprint,key:idempotencyKey(),done:false};
+        const pending=previewAttempt.current;
+        if (!pending.done) {
+          const result=await post("agent-workflows/preview",{conversation_id:conversation,idempotency_key:pending.key,
+            workflow:{scenario:"D",service_booking:{query,selection}}});
+          if (!result || typeof result!=="object" || !("draft" in result) || !result.draft) throw new Error("Агент не подтвердил доступность. Проверьте услугу, время и расписание.");
+          pending.done=true;
+        }
+        setDraft(`Можем предложить услугу «${offering.name}» ${displayDate(selection.starts_at,selection.timezone)} (${selection.timezone}). Подтвердите, подходит ли вам это время.`);
+        return;
+      }
+
       const details = {selection, summary:String(input.get("summary") ?? "").trim()};
       const fingerprint = JSON.stringify(details);
       if (attempt.current?.fingerprint !== fingerprint) attempt.current = {fingerprint,key:idempotencyKey()};
-      const id = readID(await post("requests",{conversation_id:conversation,kind:"service_booking",details,idempotency_key:attempt.current.key}));
+      const id = readID(await post("operations/requests",{conversation_id:conversation,kind:"service_booking",details,idempotency_key:attempt.current.key}));
       if (!id) throw new Error("Номер заявки не получен. Проверьте список заявок.");
       setOrder(id);
-    })}>
+    });}}>
       <label>Услуга<select required value={selected} onChange={event=>setSelected(event.target.value)} disabled={busy}>
         <option value="">Выберите услугу</option>
         {offerings.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}
@@ -79,6 +102,8 @@ export function InboxServiceBooking({org, conversation}: {org: string; conversat
         <label>Комментарий к заявке<input name="summary" maxLength={500}/></label>
       </div>}
       <button disabled={busy || !offering}>Создать заявку на запись</button>
+      <button type="submit" value="preview" disabled={busy || !offering || !!draft}>Проверить слот и подготовить ответ</button>
+      {draft && <section className="notice" aria-label="Черновик ответа агента"><p role="status">{draft}</p><p>Ответ можно проверить и скопировать. Запись ещё не подтверждена.</p></section>}
     </form>}
     {error && <p role="alert">{error}</p>}
   </details>;

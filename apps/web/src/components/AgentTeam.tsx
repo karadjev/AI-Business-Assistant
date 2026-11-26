@@ -3,6 +3,7 @@
 import {useEffect, useRef, useState, type FormEvent} from "react";
 import {money} from "@/lib/catalog";
 import {displayDate} from "@/lib/presentation";
+import {DailyAgentReport} from "./DailyAgentReport";
 import {AgentApprovals} from "./AgentApprovals";
 import {AutoServiceApproval} from "./IndustryWorkflows";
 import {MarketingResults} from "./MarketingResults";
@@ -97,6 +98,7 @@ const bookingDeliveryResults = new Map([
 ]);
 
 const operations = [
+  {id: "coordinate_daily", agentId: "business_manager", action: "coordinate_daily", label: "Бизнес-менеджер · ежедневная сводка"},
   {id: "finance", agentId: "finance", action: "read", label: "Финансы · получить сводку"},
   {id: "analytics", agentId: "analytics", action: "read", label: "Аналитика · получить сводку"},
   {id: "business_manager", agentId: "business_manager", action: "coordinate", label: "Бизнес-менеджер · координировать команду"},
@@ -269,6 +271,7 @@ export function AgentTeam({organizationId, timezone, owner, getCsrfToken, extern
   const agents = team.data?.agents ?? [];
   const availableOperations = operations.filter(operation =>
     agents.some(agent => agent.id === operation.agentId && agent.enabled)
+    && (operation.action !== "coordinate_daily" || team.data?.profile.capabilities.includes("daily_review"))
     && (operation.action !== "coordinate_growth" || team.data?.profile.capabilities.includes("growth_review")));
   const operation = availableOperations.find(operation => operation.id === selected);
   const profilePending = savingProfile || team.version !== teamVersion;
@@ -551,6 +554,7 @@ export function AgentTeam({organizationId, timezone, owner, getCsrfToken, extern
                 </li>)}</ul>
               </>}
               <h4>Результат</h4>
+              {task.action==="coordinate_daily" && <DailyAgentReport result={task.result} org={organizationId}/>}
               {task.status === "completed" && <ServiceMetrics metrics={result?.metrics}/>}
               {partial && <p>Часть работы не выполнена. Проверьте статусы подзадач и доступный результат.</p>}
               {task.action === "delegate_service" && task.status === "completed" && result?.state === "approval_required" &&

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {redirect} from "next/navigation";
 import {organizations,request} from "@/lib/session";
+import {DailyChildren} from "./DailyAgentReport";
 import {InboxServiceBooking} from "./InboxServiceBooking";
 import {InboxReview,type InboxDetails} from "./InboxReview";
 import {ReloadSection} from "./ReloadSection";
@@ -36,16 +37,18 @@ export async function WorkflowPage({view,query,id}:{view:"chat"|"orders"|"order"
  const result=await load(root+(view==="order"?"/orders/"+id:"/orders?"+params));if(result.error)return <main id="main" tabIndex={-1}><h1>Заявки недоступны</h1><p role="alert">{result.error}</p><Link prefetch={false} href={`/dashboard/orders?org=${org.id}`}>Обновить список</Link></main>;
  const owner=org.role==="owner";
  const work=root+"/operations/services/work";
- const [state,team,schedule,totals]=await Promise.all([
+ const [state,team,schedule,totals,daily]=await Promise.all([
   view==="order"&&result.data.request_kind==="service_booking"?load(work+"/orders/"+id):null,
   view==="order"&&result.data.request_kind==="service_booking"&&owner?load(root+"/team"):null,
   view==="orders"?load(work+"/schedule"):null,
   view==="orders"&&owner?load(work+"/financials"):null,
+  view==="orders"?load(root+"/agent-daily-staff"):null,
  ]);
- const workError=state?.error||team?.error||schedule?.error||totals?.error;
+ const workError=state?.error||team?.error||schedule?.error||totals?.error||daily?.error;
  return <>
   {workError&&<p role="alert">{workError}</p>}
   <Workflows key={org.id+":"+JSON.stringify(result.data)} org={org} organizations={list} view={view} order={view==="order"?result.data:undefined} orders={view==="orders"?result.data.items:undefined}
    serviceWork={state?.data??undefined} serviceMembers={team?.data?.members} schedule={schedule?.data??undefined} serviceTotals={totals?.data??undefined}/>
+  {daily&&daily.data?.length>0 && <section className="panel" aria-label="Сводка по обращениям и ресурсам"><h2>Сводка по обращениям и ресурсам</h2><DailyChildren items={daily.data} org={org.id}/></section>}
  </>;
 }

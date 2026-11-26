@@ -284,6 +284,14 @@ func agentRoutes(register func(string, string, func(http.ResponseWriter, *http.R
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+	register("GET", root+"/agent-daily-staff", func(w http.ResponseWriter, r *http.Request, session auth.Session) {
+		out, err := s.DailyForStaff(r.Context(), tenant(r, session))
+		if err != nil {
+			fail(w, r, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
 	register("GET", root+"/agent-tasks", func(w http.ResponseWriter, r *http.Request, session auth.Session) {
 		out, err := s.ListTasks(r.Context(), tenant(r, session))
 		if err != nil {

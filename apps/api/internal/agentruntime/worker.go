@@ -19,6 +19,7 @@ import (
 type claimed struct {
 	ID, OrganizationID, Initiator, AgentID, Action, ExecutionID  string
 	VariantID, ConversationID, CorrelationID, LegacyBusinessType string
+	ParentAction                                                 string
 	Deadline                                                     time.Time
 }
 
@@ -133,6 +134,10 @@ func (s Service) run(ctx context.Context, j claimed, lease string) (af.Result, e
 		action = "plan_growth"
 	}
 	a := &attempt{service: s, job: j, lease: lease, scope: scope, tool: j.AgentID + "." + action}
+	if j.Action == dailyCoordination || j.ParentAction == dailyCoordination {
+		a.permission = a.tool
+		return a.runDaily(ctx)
+	}
 	if strings.HasPrefix(action, "delegation.") || delegationParent(action) {
 		a.permission = a.tool
 		return a.runDelegation(ctx)
