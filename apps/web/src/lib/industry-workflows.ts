@@ -79,7 +79,7 @@ export function formatServiceInstant(value: Date, timeZone: string) {
   return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}${offset}`;
 }
 
-function serviceSelection(form: FormData, offering: Offering) {
+export function buildServiceSelection(form: FormData, offering: Offering) {
   const slot = text(form, "slot");
   const start = new Date(slot);
   const [year, month, day, hour, minute] = slot.split(/[-T:]/).map(Number);
@@ -118,5 +118,5 @@ export function buildRequirements(scenario: Scenario, form: FormData, offering?:
   }
   if (!offering) throw new Error("Выберите услугу из результатов поиска.");
   const part = oem ? {part: {vehicle, oem, quantity: number(form, "quantity", 1, 10)}} : {};
-  return {vehicle, selection: serviceSelection(form, offering), notes: text(form, "notes"), ...part};
+  return {vehicle, selection: buildServiceSelection(form, offering), notes: text(form, "notes"), ...part};
 }

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {redirect} from "next/navigation";
 import {organizations,request} from "@/lib/session";
+import {InboxServiceBooking} from "./InboxServiceBooking";
 import {InboxReview,type InboxDetails} from "./InboxReview";
 import {ReloadSection} from "./ReloadSection";
 import {Workflows,SandboxForm} from "./Workflows";
@@ -26,6 +27,7 @@ export async function WorkflowPage({view,query,id}:{view:"chat"|"orders"|"order"
    <nav className="section-tabs channel-tabs" aria-label="Фильтр каналов">{[["","Все каналы"],["telegram","Telegram"],["whatsapp","WhatsApp"],["instagram","Instagram"]].map(([channel,label])=><Link prefetch={false} aria-current={(query.channel??"")===channel?"page":undefined} key={channel} href={`/dashboard/conversations?org=${org.id}&channel=${channel}`}>{label}</Link>)}</nav>
    <Workflows key={org.id+":"+JSON.stringify(detail.data)} org={org} organizations={list} view={view} conversations={result.data.items} conversation={detail.data} mode={agent.data.mode}/>
    <nav className="section-tabs" aria-label="Страницы обращений">{page>1&&<Link href={inboxURL(page-1)}>Предыдущая</Link>}{result.data.items.length===20&&page<9999&&<Link href={inboxURL(page+1)}>Следующая</Link>}</nav>
+   {chosen && detail.data?.status === "open" && detail.data.channel === "internal_chat" && <InboxServiceBooking key={chosen} org={org.id} conversation={chosen}/>}
    <InboxReview key={chosen??org.id} org={org.id} conversation={chosen} owner={org.role==="owner"} enabled={inbox.data.review_enabled} details={review.data as InboxDetails|undefined}/>
   </>;
 

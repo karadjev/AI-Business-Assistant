@@ -70,10 +70,13 @@ function OrderDetails({order,busy,root,org,action,refresh,timezone}:{order:Order
  const [reason,setReason]=useState("");
  const running=useRef(false);
  const {request:askConfirmation,confirmation}=useConfirmation();
- const actions=order.status==="pending_confirmation"?[["confirm","Подтвердить и зарезервировать"],["reject","Отклонить"],["cancel","Отменить"]]:order.status==="confirmed"?[["complete","Завершить продажу"],["cancel","Отменить и освободить резерв"]]:[];
+ const appointment=order.request_details?.selection;
+ const confirmTitle=appointment?"Подтвердить запись":"Подтвердить и зарезервировать";
+ const completionTitle=appointment?"Завершить обслуживание":"Завершить продажу";
+ const actions=order.status==="pending_confirmation"?[["confirm",confirmTitle],["reject","Отклонить"],["cancel","Отменить"]]:order.status==="confirmed"?[["complete",completionTitle],["cancel","Отменить и освободить резерв"]]:[];
  async function decide(command:string,title:string) {
   if(busy||running.current)return;
-  const accepted=await askConfirmation({title,action:title,destructive:["reject","cancel"].includes(command),description:command==="confirm"?"Вы подтверждаете состав и согласованную цену. Товары будут зарезервированы в тестовом складе этого магазина. Решение не принимается автоматически.":command==="complete"?"Заказ будет завершён по действующим правилам магазина. Проверьте, что продажа действительно состоялась.":"Это изменит статус тестового заказа. При отмене подтверждённого заказа резерв будет освобождён. Действие сохранится в истории."});
+  const accepted=await askConfirmation({title,action:title,destructive:["reject","cancel"].includes(command),description:command==="confirm"&&appointment?"Сервер проверит актуальность времени и закрепит запись.":command==="complete"&&appointment?"Подтвердите, что обслуживание завершено.":command==="confirm"?"Вы подтверждаете состав и согласованную цену. Товары будут зарезервированы в тестовом складе этого магазина. Решение не принимается автоматически.":command==="complete"?"Заказ будет завершён по действующим правилам магазина. Проверьте, что продажа действительно состоялась.":"Это изменит статус тестового заказа. При отмене подтверждённого заказа резерв будет освобождён. Действие сохранится в истории."});
   if(!accepted||running.current)return;
   running.current=true;
   try{await action(async()=>{const result=await mutation(`${root}/orders/${order.id}/${command}`,"POST",{expected_version:order.version,idempotency_key:idempotencyKey(),reason});refresh();return result;});}finally{running.current=false;}
@@ -81,12 +84,17 @@ function OrderDetails({order,busy,root,org,action,refresh,timezone}:{order:Order
  const eventNames:Record<string,string>={created:"Заказ создан",confirmed:"Подтверждён сотрудником",rejected:"Отклонён сотрудником",cancelled:"Заказ отменён",completed:"Продажа завершена"};
  return <>
   <div className="order-detail-summary"><div><span className="eyebrow">Заказ №{order.id.slice(0,8)}</span><strong>{order.total_amount===null ? "Сумма не согласована" : money(order.total_amount)}</strong><p>{order.request_kind ? (order.request_details?.summary || "Заявка на рассмотрение сотрудником") : "Сумма согласована с покупателем"} · {channelLabels[order.source]??order.source}</p><p>Создан {new Date(order.created_at).toLocaleString("ru-RU",{timeZone:timezone})}</p></div><StatusBadge tone={order.status==="pending_confirmation"?"warning":order.status==="confirmed"||order.status==="completed"?"positive":"neutral"}>{statuses[order.status]??order.status}</StatusBadge></div>
+  {appointment && <section className="panel" aria-label="Расписание заявки">
+    <h2>Расписание заявки</h2>
+    <p>{displayDate(appointment.starts_at,appointment.timezone)} — {displayDate(appointment.ends_at,appointment.timezone)} · {appointment.timezone}</p>
+    <p>Клиент · {order.customer_id.slice(0,8)}</p>
+  </section>}
   <details className="technical-details"><summary>Номер и версия заказа</summary><code>{order.id}</code><p>Версия {order.version}</p></details>
   <h2>Состав заказа</h2>
   {order.items.map(i=><article className="module-card" key={i.id}><h3>{i.name_snapshot}</h3><p>Артикул: {i.sku_snapshot}</p><strong>{i.quantity} × {money(i.unit_price_amount)}</strong></article>)}
   {actions.length>0&&<section className="order-action-panel" aria-busy={busy}><h2>Ваше решение</h2><p>Проверьте состав и наличие. Резерв появляется только после подтверждения сотрудником.</p><label className="identity-form">Причина действия<Input value={reason} maxLength={500} onChange={e=>setReason(e.target.value)} placeholder="Комментарий к решению"/></label><div className="catalog-inline">{actions.map(([command,title])=><Button className={["reject","cancel"].includes(command)?"destructive-action":undefined} variant={command==="confirm"||command==="complete"?"primary":"secondary"} disabled={busy} key={command} onClick={()=>void decide(command,title)}>{busy?"Сохраняем…":title}{command==="confirm"&&!busy&&<Icon name="check"/>}</Button>)}</div></section>}
   <p className="field-hint">При изменении цены нужно новое предложение и согласие покупателя. Правила подтверждения и права сотрудников сохраняются.</p>
-  <Link prefetch={false} className="button secondary" href={`/dashboard/${order.source!=="internal_chat"?"conversations":"ai-playground"}?org=${org}&chat=${order.conversation_id}`}>Открыть тестовый диалог <Icon name="arrow"/></Link>
+  <Link prefetch={false} className="button secondary" href={`/dashboard/conversations?org=${org}&chat=${order.conversation_id}`}>Открыть обращение в Inbox <Icon name="arrow"/></Link>
   <h2 style={{marginTop:32}}>История заказа</h2>
   {order.events.length===0?<p className="field-hint">Дополнительных событий пока нет.</p>:<ol className="order-timeline">{order.events.map(e=><li key={e.id}><strong>{eventNames[e.kind]??e.kind}</strong><p>{e.reason}</p><time dateTime={e.created_at}>{new Date(e.created_at).toLocaleString("ru-RU",{timeZone:timezone})}</time><p>{e.actor_id?"Действие сотрудника":"Покупатель или система"}</p>{e.actor_id&&<details className="technical-details"><summary>Идентификатор сотрудника</summary><code>{e.actor_id}</code></details>}</li>)}</ol>}
   {confirmation}
