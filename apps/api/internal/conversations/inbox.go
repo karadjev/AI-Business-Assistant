@@ -68,6 +68,13 @@ func (s Service) InboxDetail(ctx context.Context, t catalog.Tenant, id string) (
 	defer tx.Rollback(ctx)
 	return readJSON(ctx, tx, `SELECT jsonb_build_object(
 	 'customer',jsonb_build_object('id',c.customer_id,'channel',c.channel),
+	 'requests',coalesce((SELECT jsonb_agg(to_jsonb(x) ORDER BY x.created_at DESC,x.id) FROM (
+	   SELECT id,status,created_at FROM platform.orders WHERE (organization_id,conversation_id,customer_id)=(c.organization_id,c.id,c.customer_id)
+	   ORDER BY created_at DESC,id LIMIT 20)x),'[]'::jsonb),
+	 'consents',coalesce((SELECT jsonb_agg(to_jsonb(x) ORDER BY x.occurred_at DESC,x.decision DESC,x.source_message_id DESC) FROM (
+	   SELECT channel,purpose,source,source_message_id,occurred_at,recorded_at,decision,research_only
+	   FROM platform.customer_consent_events WHERE (organization_id,conversation_id,customer_id)=(c.organization_id,c.id,c.customer_id)
+	   ORDER BY occurred_at DESC,decision DESC,source_message_id DESC LIMIT 20)x),'[]'::jsonb),
 	 'review_enabled',o.inbox_review_enabled,
      'version',c.version,'assignee_id',c.assignee_id,
      'operators',CASE WHEN platform.has_membership(c.organization_id,true) THEN
@@ -75,9 +82,9 @@ func (s Service) InboxDetail(ctx context.Context, t catalog.Tenant, id string) (
          FROM jsonb_array_elements(platform.team_state(c.organization_id)->'members') m WHERE m->>'operator'='true') ELSE '[]'::jsonb END,
 	 'intent',r.intent,'processing_state',r.last_result->>'state',
 	 'delivery',coalesce((SELECT jsonb_agg(to_jsonb(v) ORDER BY v.created_at DESC,v.id) FROM (
-	   SELECT id,status,created_at FROM platform.telegram_outbox WHERE (organization_id,conversation_id)=(c.organization_id,c.id)
+	   SELECT id,status,attempts,created_at FROM platform.telegram_outbox WHERE (organization_id,conversation_id)=(c.organization_id,c.id)
 	   UNION ALL
-	   SELECT id,status,created_at FROM platform.channel_outbox WHERE (organization_id,conversation_id)=(c.organization_id,c.id)
+	   SELECT id,status,attempts,created_at FROM platform.channel_outbox WHERE (organization_id,conversation_id)=(c.organization_id,c.id)
 	   ORDER BY created_at DESC,id LIMIT 20)v),'[]'::jsonb),
 	 'drafts',coalesce((SELECT jsonb_agg(to_jsonb(d) ORDER BY d.expires_at DESC,d.task_id) FROM (
 	   SELECT task_id,body,expires_at,decided_at,CASE WHEN status='pending' AND expires_at<=clock_timestamp()

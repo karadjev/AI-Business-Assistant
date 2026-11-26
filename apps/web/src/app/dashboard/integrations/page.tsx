@@ -8,10 +8,18 @@ export default async function Page({searchParams}:{searchParams:Promise<{org?:st
  return <main id="main" tabIndex={-1}><PageIntro eyebrow="Общение с покупателями" title="Каналы связи" description="Один помощник, привычные мессенджеры. Настройка и состояние каждого канала — здесь."/>
  <div className="notice"><strong>Сейчас — только тестовый режим</strong><p>Реальные сообщения не отправляются. Тестовая настройка не означает подключение к Telegram, WhatsApp или Instagram. Бюджет — 0 ₽.</p></div>
  {!org?<Link prefetch={false} className="button secondary" href="/dashboard/organizations">Выберите магазин</Link>:!org.is_test?<section className="empty-state"><h2>Проверьте каналы в тестовом магазине</h2><p>Подключения обычного магазина не изменяются. Для безопасной проверки выберите отдельный тестовый контур.</p><Link prefetch={false} className="button secondary" href="/dashboard/organizations">Мои магазины</Link></section>:<div className="channel-cards">{await Promise.all((["telegram","whatsapp"] as const).map(async channel=>{
-  let ready:boolean|null=null;let error="";
-  try{const r=await request(`organizations/${org.id}/integrations/${channel}`);const result=await r.json();if(r.ok)ready=Boolean(result.integration?.active);else error=result.error?.message??`Ошибка ${r.status}`;}catch{error="Не удалось проверить состояние. Повторите загрузку раздела.";}
+  let label="Состояние неизвестно";let error="";
+  try{const r=await request(`organizations/${org.id}/integrations/${channel}`);const result=await r.json();if(r.ok){
+   if(channel==="telegram"&&result.enabled===false)label="Канал выключен сервером";
+   else if(channel==="whatsapp"&&result.configured===false)label="Тестовый канал недоступен";
+   else if(!result.integration)label="Не настроен";
+   else if(!result.integration.active)label="Подключение отключено";
+   else if(channel==="telegram"&&result.integration.last_error)label="Требуется проверить webhook";
+   else if(channel==="whatsapp"&&result.integration.sending_enabled===false)label="Приём настроен · отправка выключена";
+   else label="Тестовое подключение активно";
+  }else error=result.error?.message??`Ошибка ${r.status}`;}catch{error="Не удалось проверить состояние. Повторите загрузку раздела.";}
   const title=channel==="telegram"?"Telegram":"WhatsApp";
-  return <section className="channel-card" key={channel}><div className="channel-card-top"><span className="channel-card-symbol" aria-hidden="true"><Icon name={channel}/></span><h2>{title}</h2><StatusBadge tone={error?"warning":"neutral"}>{error?"Состояние неизвестно":ready?"Тестовая настройка готова":"Не настроен"}</StatusBadge></div><p>{channel==="telegram"?"Проверяйте обращения и ответы помощника в тестовом Telegram-канале.":"Проверяйте обращения, доставку и ограничения тестового WhatsApp-канала."}</p>{error&&<p role="alert">{error}</p>}<p className="channel-note">Реальное подключение не подтверждено. Реальные отправки отключены.</p><Link prefetch={false} className="button secondary" href={`/dashboard/integrations/${channel}?org=${org.id}`}>Настройки {title} <span aria-hidden="true">→</span></Link></section>;
+  return <section className="channel-card" key={channel}><div className="channel-card-top"><span className="channel-card-symbol" aria-hidden="true"><Icon name={channel}/></span><h2>{title}</h2><StatusBadge tone={error?"warning":"neutral"}>{error?"Состояние неизвестно":label}</StatusBadge></div><p>{channel==="telegram"?"Проверяйте обращения и ответы помощника в тестовом Telegram-канале.":"Проверяйте обращения, доставку и ограничения тестового WhatsApp-канала."}</p>{error&&<p role="alert">{error}</p>}<p className="channel-note">Реальное подключение не подтверждено. Реальные отправки отключены.</p><Link prefetch={false} className="button secondary" href={`/dashboard/integrations/${channel}?org=${org.id}`}>Настройки {title} <span aria-hidden="true">→</span></Link></section>;
  }))}{await (async()=>{
  let label="Состояние неизвестно";
  if(org.role!=="owner")label="Доступно владельцу";

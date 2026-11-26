@@ -3,6 +3,8 @@
 import Link from "next/link";
 import {useEffect, useRef, useState} from "react";
 import {useRouter} from "next/navigation";
+import {statuses} from "@/lib/workflows";
+import {channelLabels} from "./ProductUI";
 import {csrf} from "./IdentityForm";
 
 export type InboxDetails = {
@@ -13,12 +15,16 @@ export type InboxDetails = {
   operators:{id:string;name:string}[];
   intent:string|null;
   processing_state:string|null;
-  delivery:{id:string; status:string}[];
+  requests:{id:string;status:string}[];
+  consents:{channel:string;source:string;source_message_id:string;occurred_at:string;decision:"granted"|"revoked"}[];
+  delivery:{id:string;status:string;attempts:number;created_at:string}[];
   drafts:{task_id:string;body:string;status:string;expires_at:string}[];
 };
 
 const deliveries:Record<string,string> = {sent:"Тестовая доставка выполнена", pending:"В очереди", sending:"Тестовая доставка выполняется",
-  failed:"Ошибка", cancelled:"Отменена", delivery_unknown:"Доставка не подтверждена", needs_approved_template:"Требуется одобренный шаблон"};
+  failed:"Ошибка доставки. Откройте управление каналом для диагностики", cancelled:"Отменена",
+  delivered:"Доставлено",read:"Прочитано",uncertain:"Доставка не подтверждена",delivery_unknown:"Доставка не подтверждена",
+  needs_approved_template:"Требуется одобренный шаблон"};
 const decisions:Record<string,string> = {pending:"На согласовании", approved:"Одобрен", rejected:"Отклонён", expired:"Срок истёк"};
 
 export function InboxReview({org,conversation,owner,enabled,details}:{
@@ -61,7 +67,17 @@ export function InboxReview({org,conversation,owner,enabled,details}:{
     <h2>Согласование ответов AI</h2>
     {enabled?<p>Ответы управляющего в тестовом Inbox проходят согласование владельца.</p>:<p>Согласование ответов управляющего выключено.</p>}
     {owner&&!enabled&&<button type="button" disabled={busy} onClick={()=>void submit("inbox",{})}>Включить согласование в тестовом контуре</button>}
-    {details&&<><p><strong>Карточка клиента</strong> · {details.customer.channel} · {details.customer.id.slice(0,8)}</p>
+    {details&&<><p><strong>Карточка клиента</strong> · {channelLabels[details.customer.channel]??details.customer.channel} · {details.customer.id.slice(0,8)}</p>
+      {details.requests.length>0&&<ul aria-label="Заявки клиента">{details.requests.map(item=><li key={item.id}>
+        <Link href={`/dashboard/orders/${item.id}?org=${org}`}>Заявка №{item.id.slice(0,8)}</Link> · {statuses[item.status]??item.status}
+      </li>)}</ul>}
+      <details>
+        <summary>Согласие на маркетинговые предложения</summary>
+        <p>Тестовый контур. {details.consents[0]?.decision==="granted"?"Согласие зафиксировано для этого канала и диалога.":details.consents[0]?.decision==="revoked"?"Согласие отозвано.":"Подтверждённого согласия нет."}</p>
+        {details.consents.length>0&&<ol>{details.consents.map(item=><li key={item.source_message_id}>
+          {item.decision==="granted"?"Получено":"Отозвано"} · {channelLabels[item.channel]??item.channel} · <time dateTime={item.occurred_at}>{new Date(item.occurred_at).toLocaleString("ru-RU")}</time> · сообщение {item.source_message_id.slice(0,8)}
+        </li>)}</ol>}
+      </details>
       {details.assignee_id&&<p>Назначен сотрудник: {details.operators.find(user=>user.id===details.assignee_id)?.name??"Диалог назначен"}</p>}
       {owner&&conversation&&details.customer.channel!=="internal_chat"&&<form className="identity-form" onSubmit={event=>{
         event.preventDefault();
@@ -78,13 +94,14 @@ export function InboxReview({org,conversation,owner,enabled,details}:{
       {conversation&&details.drafts.map(draft=><article className="inbox-draft" key={draft.task_id}>
         <p><strong>{decisions[draft.status]??draft.status}</strong> · {new Date(draft.expires_at).toLocaleString("ru-RU")}</p>
         <p>{draft.body}</p>
+        {draft.status==="approved"&&details.customer.channel==="instagram"&&<p>Ответ сохранён в Inbox. Отправка Instagram выключена.</p>}
         {owner&&draft.status==="pending"&&<>
-          <button type="button" disabled={busy} onClick={()=>void submit(`conversations/${conversation}/inbox/${draft.task_id}`,{decision:"approved"})}>Одобрить тестовый ответ</button>
+          <button type="button" disabled={busy} onClick={()=>void submit(`conversations/${conversation}/inbox/${draft.task_id}`,{decision:"approved"})}>{details.customer.channel==="instagram"?"Одобрить и сохранить в Inbox":"Одобрить тестовый ответ"}</button>
           <button type="button" disabled={busy} onClick={()=>void submit(`conversations/${conversation}/inbox/${draft.task_id}`,{decision:"rejected"})}>Отклонить</button>
         </>}
       </article>)}
       {!details.drafts.length&&<p>Черновиков для этого обращения пока нет.</p>}
-      {!!details.delivery.length&&<ul aria-label="Статусы доставки">{details.delivery.map(item=><li key={item.id}>{deliveries[item.status.toLowerCase()]??item.status}</li>)}</ul>}
+      {!!details.delivery.length&&<ul aria-label="Статусы доставки">{details.delivery.map(item=><li key={item.id}>{deliveries[item.status.toLowerCase()]??item.status} · попыток {item.attempts} · <time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString("ru-RU")}</time></li>)}</ul>}
     </>}
     {error&&<p role="alert">{error}</p>}
     <Link href={`/dashboard/integrations?org=${org}`}>Управление каналами</Link>

@@ -151,6 +151,7 @@ func (s Service) SendOne(ctx context.Context) (bool, error) {
 	}
 	locked := false
 	var bookingKey *int64
+	var consentLocked bool
 	discard := false
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
@@ -158,6 +159,13 @@ func (s Service) SendOne(ctx context.Context) (bool, error) {
 		if discard || !channel.UnlockBookingNotification(cleanup, conn, bookingKey) {
 			_ = conn.Hijack().Close(cleanup)
 			return
+		}
+		if consentLocked {
+			var ok bool
+			if conn.QueryRow(cleanup, `SELECT pg_advisory_unlock(hashtextextended($1,4101))`, j.Conversation).Scan(&ok) != nil || !ok {
+				_ = conn.Hijack().Close(cleanup)
+				return
+			}
 		}
 		if locked {
 			var ok bool
@@ -172,6 +180,15 @@ func (s Service) SendOne(ctx context.Context) (bool, error) {
 		return true, e
 	}
 	locked = true
+	// A revocation and template dispatch serialize on the same conversation.
+	if j.TemplateID != "" {
+		if _, e = conn.Exec(ctx, `SELECT pg_advisory_lock(hashtextextended($1,4101))`, j.Conversation); e != nil {
+			discard = true
+			return true, e
+		}
+		consentLocked = true
+	}
+
 	var admitted bool
 	if e = conn.QueryRow(ctx, `SELECT platform.channel_admit_send($1)`, cap).Scan(&admitted); e != nil {
 		return true, e
@@ -200,6 +217,9 @@ func (s Service) SendOne(ctx context.Context) (bool, error) {
 				var rawTemplate []byte
 				e = conn.QueryRow(send, `SELECT platform.wa_dispatch_template($1,$2)`, s.Proof(), cap).Scan(&rawTemplate)
 				var template Template
+				if e == nil && len(rawTemplate) == 0 {
+					e = channel.ErrRejected
+				}
 				if e == nil {
 					e = json.Unmarshal(rawTemplate, &template)
 				}
